@@ -5,6 +5,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -14,6 +15,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -31,11 +33,14 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import com.example.santiagoface.ui.theme.SantiagoFaceTheme
+import kotlinx.coroutines.delay
+import kotlin.random.Random
 
 @Composable
 fun RobotFaceCanvas(
@@ -79,6 +84,24 @@ fun RobotFaceCanvas(
         label = "thinkingRotation"
     )
 
+    // Periodic Eye Blinking logic
+    var isBlinking by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val nextBlinkDelay = Random.nextLong(2500, 5000)
+            delay(nextBlinkDelay)
+            isBlinking = true
+            delay(120)
+            isBlinking = false
+        }
+    }
+
+    val eyeBlinkScale by animateFloatAsState(
+        targetValue = if (isBlinking) 0.05f else 1f,
+        animationSpec = tween(110),
+        label = "eyeBlinkScale"
+    )
+
     val userDrawnStrokes = remember { mutableStateListOf<DrawnStroke>() }
     var currentPath by remember { mutableStateOf<Path?>(null) }
 
@@ -86,11 +109,15 @@ fun RobotFaceCanvas(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        // Render Vector Drawable Resource for the selected emotion
+        // Render Vector Drawable Resource with Blinking Animation
         Image(
             painter = painterResource(id = emotion.drawableRes),
             contentDescription = emotion.rawName,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleY = eyeBlinkScale
+                },
             contentScale = ContentScale.Fit
         )
 
