@@ -17,12 +17,13 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
     private val prefs = application.getSharedPreferences("santiago_prefs", Context.MODE_PRIVATE)
 
-    private val agentRepository = AgentRepository()
+    private val defaultUrl = com.example.santiagoface.BuildConfig.DEFAULT_URL
+    private val apiKey = com.example.santiagoface.BuildConfig.API_KEY
+
+    private val agentRepository = AgentRepository(apiKey = apiKey)
     val speechRecognizer = SpeechRecognizerManager(application)
     val ttsManager = TtsManager(application)
 
-    // Agent Base URL (e.g., http://10.0.2.2:3000 or http://192.168.1.100:3000)
-    private val defaultUrl = "http://10.0.2.2:3000"
     private val _agentBaseUrl = MutableStateFlow(prefs.getString("agent_url", defaultUrl) ?: defaultUrl)
     val agentBaseUrl: StateFlow<String> = _agentBaseUrl.asStateFlow()
 

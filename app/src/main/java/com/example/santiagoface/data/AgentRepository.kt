@@ -21,7 +21,9 @@ data class AgentResponse(
     val toolCall: Any? = null // Tool calls are ignored by the app as per requirements
 )
 
-class AgentRepository {
+class AgentRepository(
+    private val apiKey: String = com.example.santiagoface.BuildConfig.API_KEY
+) {
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -30,6 +32,14 @@ class AgentRepository {
 
     private val gson = Gson()
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
+
+    private fun Request.Builder.applyApiKey(): Request.Builder {
+        if (apiKey.isNotBlank()) {
+            addHeader("Authorization", "Bearer $apiKey")
+            addHeader("X-API-Key", apiKey)
+        }
+        return this
+    }
 
     /**
      * Sends a message to the Santiago Agent and receives the emotion and spoken text response.
@@ -42,6 +52,7 @@ class AgentRepository {
             val jsonBody = gson.toJson(AgentRequest(message = userMessage))
             val request = Request.Builder()
                 .url(url)
+                .applyApiKey()
                 .post(jsonBody.toRequestBody(jsonMediaType))
                 .build()
 
@@ -70,6 +81,7 @@ class AgentRepository {
 
             val request = Request.Builder()
                 .url(url)
+                .applyApiKey()
                 .post("{}".toRequestBody(jsonMediaType))
                 .build()
 
@@ -89,6 +101,7 @@ class AgentRepository {
 
             val request = Request.Builder()
                 .url(url)
+                .applyApiKey()
                 .get()
                 .build()
 

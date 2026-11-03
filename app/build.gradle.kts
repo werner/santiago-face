@@ -1,7 +1,31 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
 }
+
+val envProperties = Properties()
+val envFile = rootProject.file(".env")
+if (envFile.exists()) {
+    envFile.inputStream().use { envProperties.load(it) }
+}
+
+val localProperties = Properties()
+val localFile = rootProject.file("local.properties")
+if (localFile.exists()) {
+    localFile.inputStream().use { localProperties.load(it) }
+}
+
+fun getEnvOrProperty(key: String, defaultValue: String): String {
+    return envProperties.getProperty(key)
+        ?: localProperties.getProperty(key)
+        ?: System.getenv(key)
+        ?: defaultValue
+}
+
+val defaultUrl = getEnvOrProperty("DEFAULT_URL", "http://10.0.2.2:3000")
+val apiKey = getEnvOrProperty("API_KEY", "")
 
 android {
     namespace = "com.example.santiagoface"
@@ -17,6 +41,9 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        buildConfigField("String", "DEFAULT_URL", "\"$defaultUrl\"")
+        buildConfigField("String", "API_KEY", "\"$apiKey\"")
     }
 
     buildTypes {
@@ -33,6 +60,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
