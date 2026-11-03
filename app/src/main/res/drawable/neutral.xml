@@ -32,4 +32,9 @@
       android:strokeAlpha="0.6"
       android:fillColor="#ffffff"
       android:fillAlpha="0.6"/>
+  <path
+      android:strokeWidth="1"
+      android:pathData="M338.74,307.55L450.05,307.55A10.02,14.94 0,0 1,460.08 322.49L460.08,322.49A10.02,14.94 0,0 1,450.05 337.43L338.74,337.43A10.02,14.94 0,0 1,328.72 322.49L328.72,322.49A10.02,14.94 0,0 1,338.74 307.55z"
+      android:fillColor="#ababab"
+      android:strokeColor="#898989"/>
 </vector>
