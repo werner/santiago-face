@@ -46,6 +46,8 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     val isThinking: StateFlow<Boolean> = _isThinking.asStateFlow()
 
     val isSpeaking: StateFlow<Boolean> = ttsManager.isSpeaking
+    val spokenWord: StateFlow<String> = ttsManager.currentSpokenWord
+    val mouthOpening: StateFlow<Float> = ttsManager.mouthOpening
 
     private val _showSettings = MutableStateFlow(false)
     val showSettings: StateFlow<Boolean> = _showSettings.asStateFlow()

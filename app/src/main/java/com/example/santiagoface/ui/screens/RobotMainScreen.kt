@@ -75,6 +75,8 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
     val agentBaseUrl by viewModel.agentBaseUrl.collectAsState()
     val audioLevel by viewModel.audioLevel.collectAsState()
     val partialSpeechText by viewModel.partialSpeechText.collectAsState()
+    val spokenWord by viewModel.spokenWord.collectAsState()
+    val mouthOpening by viewModel.mouthOpening.collectAsState()
 
     // Permission launcher for microphone
     val permissionLauncher = rememberLauncherForActivityResult(
@@ -108,6 +110,8 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
             isListening = isListening,
             isThinking = isThinking,
             isSpeaking = isSpeaking,
+            spokenWord = spokenWord,
+            mouthOpening = mouthOpening,
             audioLevel = audioLevel,
             modifier = Modifier.fillMaxSize()
         )

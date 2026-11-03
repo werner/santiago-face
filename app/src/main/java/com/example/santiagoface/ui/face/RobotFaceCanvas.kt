@@ -49,7 +49,9 @@ fun RobotFaceCanvas(
     isThinking: Boolean,
     isSpeaking: Boolean,
     modifier: Modifier = Modifier,
-    audioLevel: Float = 0f
+    audioLevel: Float = 0f,
+    spokenWord: String = "",
+    mouthOpening: Float = 0f
 ) {
     val primaryColor by animateColorAsState(
         targetValue = emotion.primaryColor,
@@ -82,6 +84,32 @@ fun RobotFaceCanvas(
             repeatMode = RepeatMode.Restart
         ),
         label = "thinkingRotation"
+    )
+
+    // Speech Flap phase oscillation
+    val speechTransition = rememberInfiniteTransition(label = "speechFlap")
+    val speechPhase by speechTransition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(130, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "speechPhase"
+    )
+
+    // Calculate target opening
+    val targetMouthOpen = if (isSpeaking) {
+        val baseOpening = if (mouthOpening > 0f) mouthOpening else 0.6f
+        (baseOpening * (0.35f + 0.65f * speechPhase)).coerceIn(0.15f, 1.0f)
+    } else {
+        0.0f
+    }
+
+    val animatedMouthOpen by animateFloatAsState(
+        targetValue = targetMouthOpen,
+        animationSpec = tween(75, easing = FastOutSlowInEasing),
+        label = "animatedMouthOpen"
     )
 
     // Periodic Eye Blinking logic
@@ -121,7 +149,7 @@ fun RobotFaceCanvas(
             contentScale = ContentScale.Fit
         )
 
-        // Overlay Canvas for Thinking Ring, Aura, and Interactive Mouse Drawing
+        // Overlay Canvas for Thinking Ring, Aura, Mouth, and Interactive Mouse Drawing
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
@@ -146,6 +174,7 @@ fun RobotFaceCanvas(
             val height = size.height
             val centerX = width / 2f
             val centerY = height / 2f
+            val scale = minOf(width / 800f, height / 480f)
 
             // Background Aura when listening or thinking
             if (isListening || isThinking) {
@@ -172,6 +201,18 @@ fun RobotFaceCanvas(
                 )
             }
 
+            // Dynamic Robot Mouth
+            drawRobotMouth(
+                centerX = centerX,
+                centerY = centerY,
+                scale = scale,
+                emotion = emotion,
+                spokenWord = spokenWord,
+                mouthOpenAmount = animatedMouthOpen,
+                primaryColor = primaryColor,
+                speechPhase = speechPhase
+            )
+
             // Interactive User Mouse Strokes
             for (stroke in userDrawnStrokes) {
                 drawPath(
@@ -193,6 +234,152 @@ data class DrawnStroke(
     val path: Path,
     val color: Color
 )
+
+private fun DrawScope.drawRobotMouth(
+    centerX: Float,
+    centerY: Float,
+    scale: Float,
+    emotion: RobotEmotion,
+    spokenWord: String,
+    mouthOpenAmount: Float,
+    primaryColor: Color,
+    speechPhase: Float
+) {
+    val mouthCenterX = centerX
+    val mouthCenterY = centerY + 48f * scale
+
+    val wordFlex = if (spokenWord.isNotEmpty()) (spokenWord.length * 1.8f * scale).coerceAtMost(18f * scale) else 0f
+    val baseWidth = 100f * scale + wordFlex
+    val baseStrokeWidth = 16f * scale
+
+    if (mouthOpenAmount <= 0.02f) {
+        val mouthPath = Path()
+        when (emotion) {
+            RobotEmotion.HAPPY -> {
+                mouthPath.moveTo(mouthCenterX - baseWidth / 2f, mouthCenterY - 12f * scale)
+                mouthPath.quadraticTo(
+                    mouthCenterX, mouthCenterY + 28f * scale,
+                    mouthCenterX + baseWidth / 2f, mouthCenterY - 12f * scale
+                )
+            }
+            RobotEmotion.SAD -> {
+                mouthPath.moveTo(mouthCenterX - baseWidth / 2f, mouthCenterY + 18f * scale)
+                mouthPath.quadraticTo(
+                    mouthCenterX, mouthCenterY - 22f * scale,
+                    mouthCenterX + baseWidth / 2f, mouthCenterY + 18f * scale
+                )
+            }
+            RobotEmotion.ANGRY -> {
+                mouthPath.moveTo(mouthCenterX - baseWidth / 2f, mouthCenterY - 5f * scale)
+                mouthPath.lineTo(mouthCenterX, mouthCenterY + 15f * scale)
+                mouthPath.lineTo(mouthCenterX + baseWidth / 2f, mouthCenterY - 5f * scale)
+            }
+            RobotEmotion.CURIOUS -> {
+                mouthPath.moveTo(mouthCenterX - baseWidth * 0.45f, mouthCenterY + 8f * scale)
+                mouthPath.quadraticTo(
+                    mouthCenterX, mouthCenterY - 12f * scale,
+                    mouthCenterX + baseWidth * 0.5f, mouthCenterY - 6f * scale
+                )
+            }
+            RobotEmotion.NEUTRAL -> {
+                mouthPath.moveTo(mouthCenterX - baseWidth / 2f, mouthCenterY)
+                mouthPath.lineTo(mouthCenterX + baseWidth / 2f, mouthCenterY)
+            }
+        }
+
+        drawPath(
+            path = mouthPath,
+            color = primaryColor.copy(alpha = 0.3f),
+            style = Stroke(width = baseStrokeWidth + 8f * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+        drawPath(
+            path = mouthPath,
+            color = primaryColor,
+            style = Stroke(width = baseStrokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+    } else {
+        val speakWidth = baseWidth + 15f * scale * (1f - mouthOpenAmount * 0.4f)
+        val speakHeight = 12f * scale + 48f * scale * mouthOpenAmount
+
+        val halfW = speakWidth / 2f
+        val halfH = speakHeight / 2f
+
+        val topY = mouthCenterY - halfH
+        val bottomY = mouthCenterY + halfH
+
+        val auraRadius = speakWidth * 0.8f
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(primaryColor.copy(alpha = 0.35f * mouthOpenAmount), Color.Transparent),
+                center = Offset(mouthCenterX, mouthCenterY),
+                radius = auraRadius
+            ),
+            center = Offset(mouthCenterX, mouthCenterY),
+            radius = auraRadius
+        )
+
+        val cavityPath = Path().apply {
+            moveTo(mouthCenterX - halfW, mouthCenterY)
+            quadraticTo(
+                mouthCenterX, topY - (when (emotion) {
+                    RobotEmotion.SAD -> 8f * scale
+                    RobotEmotion.ANGRY -> 5f * scale
+                    else -> 0f
+                }),
+                mouthCenterX + halfW, mouthCenterY
+            )
+            quadraticTo(
+                mouthCenterX, bottomY + (when (emotion) {
+                    RobotEmotion.HAPPY -> 8f * scale
+                    else -> 0f
+                }),
+                mouthCenterX - halfW, mouthCenterY
+            )
+            close()
+        }
+
+        drawPath(
+            path = cavityPath,
+            brush = Brush.verticalGradient(
+                colors = listOf(
+                    primaryColor.copy(alpha = 0.45f * mouthOpenAmount),
+                    Color(0xFF090D14)
+                ),
+                startY = topY,
+                endY = bottomY
+            )
+        )
+
+        if (speakHeight > 18f * scale) {
+            val barCount = 3
+            val barSpacing = speakWidth / (barCount + 1)
+            for (i in 1..barCount) {
+                val barX = (mouthCenterX - halfW) + barSpacing * i
+                val barPulse = if (i % 2 == 1) speechPhase else (1.1f - speechPhase)
+                val barH = (speakHeight * 0.55f) * barPulse
+                drawLine(
+                    color = primaryColor.copy(alpha = 0.85f),
+                    start = Offset(barX, mouthCenterY - barH / 2f),
+                    end = Offset(barX, mouthCenterY + barH / 2f),
+                    strokeWidth = 6f * scale,
+                    cap = StrokeCap.Round
+                )
+            }
+        }
+
+        drawPath(
+            path = cavityPath,
+            color = primaryColor.copy(alpha = 0.4f),
+            style = Stroke(width = 16f * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+        drawPath(
+            path = cavityPath,
+            color = primaryColor,
+            style = Stroke(width = 10f * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+    }
+}
+
 
 private fun DrawScope.drawAura(
     centerX: Float,

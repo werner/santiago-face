@@ -38,10 +38,4 @@
   <path
       android:pathData="M460,205L590,150L460,150Z"
       android:fillColor="#0c1117"/>
-  <path
-      android:pathData="M350,285Q400,245 450,285"
-      android:strokeWidth="18"
-      android:fillColor="#00000000"
-      android:strokeColor="#d500f9"
-      android:strokeLineCap="round"/>
 </vector>

@@ -32,10 +32,4 @@
       android:strokeAlpha="0.6"
       android:fillColor="#ffffff"
       android:fillAlpha="0.6"/>
-  <path
-      android:pathData="M360,250Q400,290 440,250"
-      android:strokeWidth="18"
-      android:fillColor="#00000000"
-      android:strokeColor="#bfff00"
-      android:strokeLineCap="round"/>
 </vector>
