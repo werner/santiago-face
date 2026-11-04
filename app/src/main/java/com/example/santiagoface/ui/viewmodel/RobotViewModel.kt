@@ -40,9 +40,6 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     private val _emotion = MutableStateFlow(RobotEmotion.NEUTRAL)
     val emotion: StateFlow<RobotEmotion> = _emotion.asStateFlow()
 
-    private val _statusText = MutableStateFlow("Tap microphone to start talking")
-    val statusText: StateFlow<String> = _statusText.asStateFlow()
-
     private val _lastUserText = MutableStateFlow("")
     val lastUserText: StateFlow<String> = _lastUserText.asStateFlow()
 
@@ -108,14 +105,12 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleListening() {
         if (ttsManager.isSpeaking.value) {
             ttsManager.stop()
-            _statusText.value = "Speech stopped"
             return
         }
 
         if (_isListening.value) {
             speechRecognizer.stopListening()
             _isListening.value = false
-            _statusText.value = "Stopped listening"
         } else {
             startListening()
         }
@@ -129,7 +124,6 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         _isListening.value = true
-        _statusText.value = "Listening..."
 
         speechRecognizer.startListening(
             onResult = { recognizedText ->
@@ -139,7 +133,6 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
             },
             onError = { errorMessage ->
                 _isListening.value = false
-                _statusText.value = errorMessage
             }
         )
     }
@@ -150,7 +143,6 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
         _lastUserText.value = trimmed
         _isThinking.value = true
-        _statusText.value = "thinking..."
 
         viewModelScope.launch {
             val result = agentRepository.sendMessage(_agentBaseUrl.value, trimmed)
@@ -163,14 +155,12 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
                 val replyText = response.text?.trim() ?: "No text reply"
                 _lastAgentText.value = replyText
-                _statusText.value = "Santiago: $replyText"
 
                 // Speak the reply via TTS (Tool calls are ignored per requirement)
                 speakReply(replyText)
             }.onFailure { error ->
                 _emotion.value = RobotEmotion.SAD
                 val errorMsg = "Error: ${error.message ?: "Failed to connect to agent"}"
-                _statusText.value = errorMsg
                 _lastAgentText.value = errorMsg
             }
         }
@@ -179,11 +169,8 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     private fun speakReply(text: String) {
         ttsManager.speak(
             text = text,
-            onStart = {
-                _statusText.value = "Speaking..."
-            },
+            onStart = {},
             onDone = {
-                _statusText.value = "Finished speaking"
                 if (_autoListen.value) {
                     viewModelScope.launch {
                         kotlinx.coroutines.delay(600)
@@ -191,9 +178,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             },
-            onError = { err ->
-                _statusText.value = "TTS error: $err"
-            }
+            onError = {}
         )
     }
 
@@ -205,7 +190,6 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
                 _connectionStatus.value = isOk
             }.onFailure { err ->
                 _connectionStatus.value = false
-                _statusText.value = "Connection error: ${err.message}"
             }
         }
     }
@@ -218,10 +202,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
             if (resetResult.getOrDefault(false)) {
                 _emotion.value = RobotEmotion.HAPPY
-                _statusText.value = "Memory reset successfully!"
                 _lastAgentText.value = "Memory reset"
-            } else {
-                _statusText.value = "Failed to reset memory"
             }
         }
     }

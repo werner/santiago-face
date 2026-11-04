@@ -63,7 +63,6 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
     val context = LocalContext.current
 
     val emotion by viewModel.emotion.collectAsState()
-    val statusText by viewModel.statusText.collectAsState()
     val lastUserText by viewModel.lastUserText.collectAsState()
     val isListening by viewModel.isListening.collectAsState()
     val isThinking by viewModel.isThinking.collectAsState()
@@ -205,48 +204,6 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                         textAlign = TextAlign.Center
                     )
-                }
-            }
-
-            // Status Card
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF10141D).copy(alpha = 0.9f)
-                ),
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(
-                        width = 1.dp,
-                        brush = Brush.horizontalGradient(
-                            listOf(emotion.primaryColor.copy(alpha = 0.5f), Color.Transparent)
-                        ),
-                        shape = RoundedCornerShape(20.dp)
-                    )
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = statusText,
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        textAlign = TextAlign.Center,
-                        lineHeight = 20.sp
-                    )
-
-                    if (lastUserText.isNotEmpty() && !isListening) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "You said: “$lastUserText”",
-                            color = Color.Gray,
-                            fontSize = 11.sp,
-                            textAlign = TextAlign.Center
-                        )
-                    }
                 }
             }
         }
