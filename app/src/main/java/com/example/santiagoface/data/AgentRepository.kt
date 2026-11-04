@@ -4,10 +4,13 @@ import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Dns
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.net.InetAddress
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 data class AgentRequest(
@@ -21,10 +24,36 @@ data class AgentResponse(
     val toolCall: Any? = null // Tool calls are ignored by the app as per requirements
 )
 
+/**
+ * Custom DNS resolver that falls back to host IP (10.0.2.2) when .local hostnames
+ * (such as santiago_agent.local) cannot be resolved by the emulator's system DNS.
+ */
+private object EmulatorLocalDns : Dns {
+    override fun lookup(hostname: String): List<InetAddress> {
+        return try {
+            Dns.SYSTEM.lookup(hostname)
+        } catch (e: UnknownHostException) {
+            if (hostname.equals("santiago_agent.local", ignoreCase = true) || hostname.endsWith(".local")) {
+                try {
+                    listOf(
+                        InetAddress.getByName("127.0.0.1"),
+                        InetAddress.getByName("10.0.2.2")
+                    )
+                } catch (_: Exception) {
+                    throw e
+                }
+            } else {
+                throw e
+            }
+        }
+    }
+}
+
 class AgentRepository(
     private val apiKey: String = com.example.santiagoface.BuildConfig.API_KEY
 ) {
     private val client = OkHttpClient.Builder()
+        .dns(EmulatorLocalDns)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(15, TimeUnit.SECONDS)
