@@ -21,7 +21,7 @@
       android:fillAlpha="0.6"/>
   <path
       android:pathData="M515,160L535,160A45,45 0,0 1,580 205L580,275A45,45 0,0 1,535 320L515,320A45,45 0,0 1,470 275L470,205A45,45 0,0 1,515 160z"
-      android:fillColor="#ababab"/>
+      android:fillColor="#aaaaaa"/>
   <path
       android:pathData="M500,195m-14,0a14,14 0,1 1,28 0a14,14 0,1 1,-28 0"
       android:strokeAlpha="0.9"

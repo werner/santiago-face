@@ -63,6 +63,11 @@ fun RobotFaceCanvas(
         animationSpec = tween(600),
         label = "secondaryColor"
     )
+    val eyeColor by animateColorAsState(
+        targetValue = emotion.eyeColor,
+        animationSpec = tween(600),
+        label = "eyeColor"
+    )
 
     val infiniteTransition = rememberInfiniteTransition(label = "faceLoop")
 
@@ -209,7 +214,7 @@ fun RobotFaceCanvas(
                 emotion = emotion,
                 spokenWord = spokenWord,
                 mouthOpenAmount = animatedMouthOpen,
-                primaryColor = primaryColor,
+                mouthColor = eyeColor,
                 speechPhase = speechPhase
             )
 
@@ -242,7 +247,7 @@ private fun DrawScope.drawRobotMouth(
     emotion: RobotEmotion,
     spokenWord: String,
     mouthOpenAmount: Float,
-    primaryColor: Color,
+    mouthColor: Color,
     speechPhase: Float
 ) {
     val mouthCenterX = centerX
@@ -289,17 +294,17 @@ private fun DrawScope.drawRobotMouth(
 
         drawPath(
             path = mouthPath,
-            color = primaryColor.copy(alpha = 0.3f),
+            color = mouthColor.copy(alpha = 0.3f),
             style = Stroke(width = baseStrokeWidth + 8f * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
         drawPath(
             path = mouthPath,
-            color = primaryColor,
+            color = mouthColor,
             style = Stroke(width = baseStrokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
     } else {
-        val speakWidth = baseWidth + 15f * scale * (1f - mouthOpenAmount * 0.4f)
-        val speakHeight = 12f * scale + 48f * scale * mouthOpenAmount
+        val speakWidth = baseWidth + 50f * scale * mouthOpenAmount
+        val speakHeight = (24f * scale + 86f * scale * mouthOpenAmount) * (0.85f + 0.15f * speechPhase)
 
         val halfW = speakWidth / 2f
         val halfH = speakHeight / 2f
@@ -307,10 +312,10 @@ private fun DrawScope.drawRobotMouth(
         val topY = mouthCenterY - halfH
         val bottomY = mouthCenterY + halfH
 
-        val auraRadius = speakWidth * 0.8f
+        val auraRadius = speakWidth * 0.85f
         drawCircle(
             brush = Brush.radialGradient(
-                colors = listOf(primaryColor.copy(alpha = 0.35f * mouthOpenAmount), Color.Transparent),
+                colors = listOf(mouthColor.copy(alpha = 0.35f * mouthOpenAmount), Color.Transparent),
                 center = Offset(mouthCenterX, mouthCenterY),
                 radius = auraRadius
             ),
@@ -322,15 +327,15 @@ private fun DrawScope.drawRobotMouth(
             moveTo(mouthCenterX - halfW, mouthCenterY)
             quadraticTo(
                 mouthCenterX, topY - (when (emotion) {
-                    RobotEmotion.SAD -> 8f * scale
-                    RobotEmotion.ANGRY -> 5f * scale
+                    RobotEmotion.SAD -> 12f * scale
+                    RobotEmotion.ANGRY -> 8f * scale
                     else -> 0f
                 }),
                 mouthCenterX + halfW, mouthCenterY
             )
             quadraticTo(
                 mouthCenterX, bottomY + (when (emotion) {
-                    RobotEmotion.HAPPY -> 8f * scale
+                    RobotEmotion.HAPPY -> 12f * scale
                     else -> 0f
                 }),
                 mouthCenterX - halfW, mouthCenterY
@@ -338,44 +343,21 @@ private fun DrawScope.drawRobotMouth(
             close()
         }
 
+        // Fill mouth cavity completely with uniform solid mouthColor (no teeth/bars inside)
         drawPath(
             path = cavityPath,
-            brush = Brush.verticalGradient(
-                colors = listOf(
-                    primaryColor.copy(alpha = 0.45f * mouthOpenAmount),
-                    Color(0xFF090D14)
-                ),
-                startY = topY,
-                endY = bottomY
-            )
+            color = mouthColor
         )
 
-        if (speakHeight > 18f * scale) {
-            val barCount = 3
-            val barSpacing = speakWidth / (barCount + 1)
-            for (i in 1..barCount) {
-                val barX = (mouthCenterX - halfW) + barSpacing * i
-                val barPulse = if (i % 2 == 1) speechPhase else (1.1f - speechPhase)
-                val barH = (speakHeight * 0.55f) * barPulse
-                drawLine(
-                    color = primaryColor.copy(alpha = 0.85f),
-                    start = Offset(barX, mouthCenterY - barH / 2f),
-                    end = Offset(barX, mouthCenterY + barH / 2f),
-                    strokeWidth = 6f * scale,
-                    cap = StrokeCap.Round
-                )
-            }
-        }
-
         drawPath(
             path = cavityPath,
-            color = primaryColor.copy(alpha = 0.4f),
-            style = Stroke(width = 16f * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
+            color = mouthColor.copy(alpha = 0.4f),
+            style = Stroke(width = 18f * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
         drawPath(
             path = cavityPath,
-            color = primaryColor,
-            style = Stroke(width = 10f * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
+            color = mouthColor,
+            style = Stroke(width = 12f * scale, cap = StrokeCap.Round, join = StrokeJoin.Round)
         )
     }
 }
@@ -440,6 +422,20 @@ private fun RobotFaceCanvasHappyPreview() {
             isListening = false,
             isThinking = false,
             isSpeaking = false
+        )
+    }
+}
+
+@Preview(name = "Happy Speaking", showBackground = true, backgroundColor = 0xFF070A10)
+@Composable
+private fun RobotFaceCanvasHappySpeakingPreview() {
+    SantiagoFaceTheme {
+        RobotFaceCanvas(
+            emotion = RobotEmotion.HAPPY,
+            isListening = false,
+            isThinking = false,
+            isSpeaking = true,
+            mouthOpening = 0.8f
         )
     }
 }
