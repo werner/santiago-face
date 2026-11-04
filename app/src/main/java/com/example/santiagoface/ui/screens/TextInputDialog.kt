@@ -35,7 +35,7 @@ fun TextInputDialog(
         titleContentColor = Color(0xFF00E5FF),
         title = {
             Text(
-                text = "Talk to Santiago",
+                text = "Talk",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )

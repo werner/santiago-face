@@ -141,7 +141,7 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
                     Text(
-                        text = "SANTIAGO AI",
+                        text = "",
                         color = Color(0xFF00E5FF),
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,

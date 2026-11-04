@@ -24,14 +24,23 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     val speechRecognizer = SpeechRecognizerManager(application)
     val ttsManager = TtsManager(application)
 
-    private val _agentBaseUrl = MutableStateFlow(prefs.getString("agent_url", defaultUrl) ?: defaultUrl)
+    private val savedUrl = prefs.getString("agent_url", null)
+    private val initialUrl: String = run {
+        if (savedUrl.isNullOrBlank() || savedUrl.contains("127.0.0.1") || savedUrl.contains("10.0.2.2") || savedUrl.contains("localhost")) {
+            defaultUrl
+        } else {
+            agentRepository.cleanBaseUrl(savedUrl)
+        }
+    }
+
+    private val _agentBaseUrl = MutableStateFlow(initialUrl)
     val agentBaseUrl: StateFlow<String> = _agentBaseUrl.asStateFlow()
 
     // State Variables
     private val _emotion = MutableStateFlow(RobotEmotion.NEUTRAL)
     val emotion: StateFlow<RobotEmotion> = _emotion.asStateFlow()
 
-    private val _statusText = MutableStateFlow("Tap microphone to talk to Santiago")
+    private val _statusText = MutableStateFlow("Tap microphone to start talking")
     val statusText: StateFlow<String> = _statusText.asStateFlow()
 
     private val _lastUserText = MutableStateFlow("")
@@ -66,15 +75,14 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     val partialSpeechText: StateFlow<String> = speechRecognizer.partialText
 
     init {
+        // Persist the clean initial URL
+        prefs.edit().putString("agent_url", initialUrl).apply()
         // Initial health check
         testConnection()
     }
 
     fun updateAgentUrl(newUrl: String) {
-        var cleanUrl = newUrl.trim()
-        if (!cleanUrl.startsWith("http://") && !cleanUrl.startsWith("https://")) {
-            cleanUrl = "http://$cleanUrl"
-        }
+        val cleanUrl = agentRepository.cleanBaseUrl(newUrl)
         _agentBaseUrl.value = cleanUrl
         prefs.edit().putString("agent_url", cleanUrl).apply()
         testConnection()
@@ -142,7 +150,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
         _lastUserText.value = trimmed
         _isThinking.value = true
-        _statusText.value = "Santiago is thinking..."
+        _statusText.value = "thinking..."
 
         viewModelScope.launch {
             val result = agentRepository.sendMessage(_agentBaseUrl.value, trimmed)
@@ -172,10 +180,10 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
         ttsManager.speak(
             text = text,
             onStart = {
-                _statusText.value = "Santiago is speaking..."
+                _statusText.value = "Speaking..."
             },
             onDone = {
-                _statusText.value = "Santiago finished speaking"
+                _statusText.value = "Finished speaking"
                 if (_autoListen.value) {
                     viewModelScope.launch {
                         kotlinx.coroutines.delay(600)
@@ -193,7 +201,12 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _connectionStatus.value = null
             val healthResult = agentRepository.checkHealth(_agentBaseUrl.value)
-            _connectionStatus.value = healthResult.getOrDefault(false)
+            healthResult.onSuccess { isOk ->
+                _connectionStatus.value = isOk
+            }.onFailure { err ->
+                _connectionStatus.value = false
+                _statusText.value = "Connection error: ${err.message}"
+            }
         }
     }
 

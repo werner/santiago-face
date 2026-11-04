@@ -76,7 +76,7 @@ fun SettingsBottomSheet(
                 .padding(horizontal = 24.dp, vertical = 16.dp)
         ) {
             Text(
-                text = "Santiago Agent Settings",
+                text = "Agent Settings",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFF00E5FF)
@@ -86,7 +86,7 @@ fun SettingsBottomSheet(
 
             // 1. Agent Server Endpoint Section
             Text(
-                text = "Agent Base URL (Santiago Rust Server)",
+                text = "Agent Base URL (Rust Server)",
                 fontSize = 14.sp,
                 color = Color.LightGray
             )
@@ -131,7 +131,7 @@ fun SettingsBottomSheet(
                         null -> Color.Yellow
                     }
                     val statusText = when (connectionStatus) {
-                        true -> "Connected to Santiago Agent"
+                        true -> "Connected to Agent"
                         false -> "Disconnected / Unreachable"
                         null -> "Testing Connection..."
                     }
@@ -177,7 +177,7 @@ fun SettingsBottomSheet(
                             fontSize = 14.sp
                         )
                         Text(
-                            text = "Automatically start listening after Santiago finishes speaking",
+                            text = "Automatically start listening after finishes speaking",
                             color = Color.Gray,
                             fontSize = 12.sp
                         )

@@ -10,7 +10,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.InetAddress
-import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 data class AgentRequest(
@@ -25,27 +24,51 @@ data class AgentResponse(
 )
 
 /**
- * Custom DNS resolver that falls back to host IP (10.0.2.2) when .local hostnames
- * (such as santiago_agent.local) cannot be resolved by the emulator's system DNS.
+ * Custom DNS resolver that maps local hostnames (such as the configured DEFAULT_URL host or .local domains)
+ * to the system-resolved LAN IP, Android emulator host IP (10.0.2.2), and local loopback (127.0.0.1).
  */
-private object EmulatorLocalDns : Dns {
+object EmulatorLocalDns : Dns {
+    private val defaultHost: String? by lazy {
+        runCatching {
+            val urlStr = com.example.santiagoface.BuildConfig.DEFAULT_URL
+            val formatted = if (urlStr.startsWith("http://") || urlStr.startsWith("https://")) urlStr else "http://$urlStr"
+            java.net.URI(formatted).host
+        }.getOrNull()
+    }
+
     override fun lookup(hostname: String): List<InetAddress> {
-        return try {
-            Dns.SYSTEM.lookup(hostname)
-        } catch (e: UnknownHostException) {
-            if (hostname.equals("santiago_agent.local", ignoreCase = true) || hostname.endsWith(".local")) {
-                try {
-                    listOf(
-                        InetAddress.getByName("127.0.0.1"),
-                        InetAddress.getByName("10.0.2.2")
-                    )
-                } catch (_: Exception) {
-                    throw e
+        val isLocalHost = (defaultHost != null && hostname.equals(defaultHost, ignoreCase = true)) || hostname.endsWith(".local")
+
+        if (isLocalHost) {
+            val hostIpBytes = byteArrayOf(10, 0, 2, 2)
+            val loopbackIpBytes = byteArrayOf(127, 0, 0, 1)
+            val addresses = mutableListOf<InetAddress>()
+
+            // 1. Query system DNS first to discover mDNS/LAN IPs
+            try {
+                val systemAddresses = Dns.SYSTEM.lookup(hostname)
+                for (addr in systemAddresses) {
+                    if (addr.isLoopbackAddress) {
+                        addresses.add(InetAddress.getByAddress(hostname, hostIpBytes))
+                    } else {
+                        addresses.add(InetAddress.getByAddress(hostname, addr.address))
+                    }
                 }
-            } else {
-                throw e
+            } catch (_: Exception) {
+                // Ignore system DNS errors for .local hostnames
             }
+
+            // 2. Always include 10.0.2.2 (Emulator Host) and 127.0.0.1 (ADB reverse / local)
+            try {
+                addresses.add(InetAddress.getByAddress(hostname, hostIpBytes))
+                addresses.add(InetAddress.getByAddress(hostname, loopbackIpBytes))
+            } catch (_: Exception) {
+            }
+
+            return addresses.distinctBy { it.hostAddress }
         }
+
+        return Dns.SYSTEM.lookup(hostname)
     }
 }
 
@@ -70,13 +93,21 @@ class AgentRepository(
         return this
     }
 
+    fun cleanBaseUrl(baseUrl: String): String {
+        var clean = baseUrl.trim().removeSuffix("/")
+        if (!clean.startsWith("http://") && !clean.startsWith("https://")) {
+            clean = "http://$clean"
+        }
+        return clean
+    }
+
     /**
      * Sends a message to the Santiago Agent and receives the emotion and spoken text response.
      */
     suspend fun sendMessage(baseUrl: String, userMessage: String): Result<AgentResponse> = withContext(Dispatchers.IO) {
         runCatching {
-            val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
-            val url = "$cleanBaseUrl/api/message"
+            val cleanUrl = cleanBaseUrl(baseUrl)
+            val url = "$cleanUrl/api/message"
 
             val jsonBody = gson.toJson(AgentRequest(message = userMessage))
             val request = Request.Builder()
@@ -105,8 +136,8 @@ class AgentRepository(
      */
     suspend fun resetHistory(baseUrl: String): Result<Boolean> = withContext(Dispatchers.IO) {
         runCatching {
-            val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
-            val url = "$cleanBaseUrl/api/history/reset"
+            val cleanUrl = cleanBaseUrl(baseUrl)
+            val url = "$cleanUrl/api/history/reset"
 
             val request = Request.Builder()
                 .url(url)
@@ -115,7 +146,11 @@ class AgentRepository(
                 .build()
 
             client.newCall(request).execute().use { response ->
-                response.isSuccessful
+                if (!response.isSuccessful) {
+                    val errorBody = response.body?.string() ?: ""
+                    throw Exception("HTTP ${response.code}: $errorBody")
+                }
+                true
             }
         }
     }
@@ -125,8 +160,8 @@ class AgentRepository(
      */
     suspend fun checkHealth(baseUrl: String): Result<Boolean> = withContext(Dispatchers.IO) {
         runCatching {
-            val cleanBaseUrl = baseUrl.trim().removeSuffix("/")
-            val url = "$cleanBaseUrl/health"
+            val cleanUrl = cleanBaseUrl(baseUrl)
+            val url = "$cleanUrl/health"
 
             val request = Request.Builder()
                 .url(url)
@@ -135,7 +170,11 @@ class AgentRepository(
                 .build()
 
             client.newCall(request).execute().use { response ->
-                response.isSuccessful
+                if (!response.isSuccessful) {
+                    val errorBody = response.body?.string() ?: ""
+                    throw Exception("HTTP ${response.code}: $errorBody")
+                }
+                true
             }
         }
     }
