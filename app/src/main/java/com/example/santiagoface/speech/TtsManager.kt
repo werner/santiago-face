@@ -35,18 +35,68 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
-            val result = tts?.setLanguage(Locale.US)
-            if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
-                Log.e("TtsManager", "Language US is not supported or missing data")
-            }
-            // Give a cool slightly robotic pitch & rate
-            tts?.setPitch(1.05f)
-            tts?.setSpeechRate(1.0f)
             isInitialized = true
+            // Default pitch and speech rate set to natural 1.0f for authentic human pronunciation
+            tts?.setPitch(1.0f)
+            tts?.setSpeechRate(1.0f)
+            configureLanguageAndVoiceForText("Hola")
         } else {
             Log.e("TtsManager", "TTS Initialization failed with status: $status")
         }
     }
+
+    private fun configureLanguageAndVoiceForText(text: String) {
+        if (tts == null) return
+
+        val isSpanish = isSpanishText(text)
+        val targetLocale = if (isSpanish) {
+            val esLocales = listOf(
+                Locale.forLanguageTag("es-ES"),
+                Locale.forLanguageTag("es-MX"),
+                Locale.forLanguageTag("es-US"),
+                Locale.forLanguageTag("es")
+            )
+            var chosenLocale = Locale.forLanguageTag("es-ES")
+            for (loc in esLocales) {
+                val res = tts?.setLanguage(loc)
+                if (res != TextToSpeech.LANG_MISSING_DATA && res != TextToSpeech.LANG_NOT_SUPPORTED) {
+                    chosenLocale = loc
+                    break
+                }
+            }
+            chosenLocale
+        } else {
+            val enLocale = Locale.US
+            tts?.setLanguage(enLocale)
+            enLocale
+        }
+
+        try {
+            val voices = tts?.voices
+            if (!voices.isNullOrEmpty()) {
+                val targetLang = targetLocale.language
+                val bestVoice = voices.asSequence()
+                    .filter { voice ->
+                        voice.locale.language == targetLang &&
+                        !voice.features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)
+                    }
+                    .sortedWith(
+                        compareByDescending<android.speech.tts.Voice> { it.quality }
+                            .thenBy { if (!it.isNetworkConnectionRequired) 1 else 0 }
+                    )
+                    .firstOrNull()
+
+                if (bestVoice != null) {
+                    tts?.voice = bestVoice
+                    Log.d("TtsManager", "Selected native voice: ${bestVoice.name} for language ${targetLocale.language}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("TtsManager", "Could not set specific TTS voice: ${e.message}")
+        }
+    }
+
+    fun isSpanishText(text: String): Boolean = SpanishLanguageUtils.isSpanishText(text)
 
     private fun setupUtteranceListener() {
         tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -95,12 +145,12 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
         var maxOpening = 0.3f
         for (char in clean) {
             val opening = when (char) {
-                'a', 'o', 'u', '0' -> 1.0f
-                'e', 'i', 'y', '3', '8' -> 0.75f
+                'a', 'o', 'u', '0', 'á', 'ó', 'ú' -> 1.0f
+                'e', 'i', 'y', '3', '8', 'é', 'í' -> 0.75f
                 'w', 'q', '4' -> 0.85f
                 'm', 'b', 'p' -> 0.15f
                 'f', 'v', 's', 'z' -> 0.4f
-                't', 'd', 'k', 'g', 'n', 'l', 'r' -> 0.55f
+                't', 'd', 'k', 'g', 'n', 'l', 'r', 'ñ' -> 0.55f
                 else -> 0.35f
             }
             if (opening > maxOpening) {
@@ -125,6 +175,8 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
             onError?.invoke("TTS engine not initialized")
             return
         }
+
+        configureLanguageAndVoiceForText(text)
 
         currentTextToSpeak = text
         _currentSpokenWord.value = ""
@@ -170,4 +222,3 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
         _currentSpokenWord.value = ""
     }
 }
-
