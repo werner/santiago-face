@@ -28,78 +28,109 @@ class SpeechRecognizerManager(private val context: Context) {
     private var onResultListener: ((String) -> Unit)? = null
     private var onErrorListener: ((String) -> Unit)? = null
 
+    private var preferredSpanishLocaleTag: String = "es-ES"
+
     init {
         initRecognizer()
     }
 
+    fun updateSpanishLocale(localeTag: String) {
+        preferredSpanishLocaleTag = if (localeTag.isNotBlank()) localeTag else "es-ES"
+    }
+
     private fun initRecognizer() {
-        if (SpeechRecognizer.isRecognitionAvailable(context)) {
-            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context.applicationContext).apply {
-                setRecognitionListener(object : RecognitionListener {
-                    override fun onReadyForSpeech(params: Bundle?) {
-                        _isListening.value = true
-                        _partialText.value = ""
-                    }
+        destroy()
 
-                    override fun onBeginningOfSpeech() {
-                        _isListening.value = true
-                    }
+        val appContext = context.applicationContext
+        if (!SpeechRecognizer.isRecognitionAvailable(appContext)) {
+            Log.e("SpeechRecognizer", "Speech recognition is not available on this device.")
+            return
+        }
 
-                    override fun onRmsChanged(rmsdB: Float) {
-                        // Normalize sound volume level for visualizer
-                        _audioLevel.value = (rmsdB.coerceAtLeast(0f) / 10f).coerceIn(0f, 1f)
-                    }
-
-                    override fun onBufferReceived(buffer: ByteArray?) {}
-
-                    override fun onEndOfSpeech() {
-                        _isListening.value = false
-                        _audioLevel.value = 0f
-                    }
-
-                    override fun onError(error: Int) {
-                        _isListening.value = false
-                        _audioLevel.value = 0f
-                        val errorMessage = getErrorMessage(error)
-                        Log.e("SpeechRecognizer", "Error code $error: $errorMessage")
-                        if (error != SpeechRecognizer.ERROR_NO_MATCH && error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
-                            onErrorListener?.invoke(errorMessage)
-                        } else {
-                            onErrorListener?.invoke("Didn't hear anything. Try speaking again.")
-                        }
-                    }
-
-                    override fun onResults(results: Bundle?) {
-                        _isListening.value = false
-                        _audioLevel.value = 0f
-                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        if (!matches.isNullOrEmpty()) {
-                            val recognized = matches[0]
-                            _partialText.value = recognized
-                            onResultListener?.invoke(recognized)
-                        } else {
-                            onErrorListener?.invoke("No speech results found")
-                        }
-                    }
-
-                    override fun onPartialResults(partialResults: Bundle?) {
-                        val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        if (!matches.isNullOrEmpty()) {
-                            _partialText.value = matches[0]
-                        }
-                    }
-
-                    override fun onEvent(eventType: Int, params: Bundle?) {}
-                })
+        // Try on-device speech recognizer if available on Android 12+ (minSdk 31), fallback to standard recognizer
+        speechRecognizer = if (SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)) {
+            try {
+                SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
+            } catch (e: Exception) {
+                Log.w("SpeechRecognizer", "Failed to create on-device recognizer, falling back: ${e.message}")
+                SpeechRecognizer.createSpeechRecognizer(appContext)
             }
         } else {
-            Log.e("SpeechRecognizer", "Speech recognition is not available on this device.")
+            SpeechRecognizer.createSpeechRecognizer(appContext)
         }
+
+        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {
+                _isListening.value = true
+                _partialText.value = ""
+            }
+
+            override fun onBeginningOfSpeech() {
+                _isListening.value = true
+            }
+
+            override fun onRmsChanged(rmsdB: Float) {
+                // Smooth normalized sound volume level for visualizer
+                val targetLevel = (rmsdB.coerceAtLeast(0f) / 10f).coerceIn(0f, 1f)
+                _audioLevel.value = _audioLevel.value * 0.3f + targetLevel * 0.7f
+            }
+
+            override fun onBufferReceived(buffer: ByteArray?) {}
+
+            override fun onEndOfSpeech() {
+                _isListening.value = false
+                _audioLevel.value = 0f
+            }
+
+            override fun onError(error: Int) {
+                _isListening.value = false
+                _audioLevel.value = 0f
+                val errorMessage = getErrorMessage(error)
+                Log.e("SpeechRecognizer", "Error code $error: $errorMessage")
+
+                // Recover from client / busy errors by resetting speech recognizer
+                if (error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+                    initRecognizer()
+                }
+
+                if (error != SpeechRecognizer.ERROR_NO_MATCH && error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                    onErrorListener?.invoke(errorMessage)
+                } else {
+                    onErrorListener?.invoke("No se escuchó nada en español. Intenta hablar de nuevo.")
+                }
+            }
+
+            override fun onResults(results: Bundle?) {
+                _isListening.value = false
+                _audioLevel.value = 0f
+                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    val bestCandidate = SpanishLanguageUtils.selectBestSpanishCandidate(matches)
+                    val formattedText = SpanishLanguageUtils.formatSpanishText(bestCandidate)
+                    _partialText.value = formattedText
+                    onResultListener?.invoke(formattedText)
+                } else {
+                    onErrorListener?.invoke("No se encontraron resultados de voz en español")
+                }
+            }
+
+            override fun onPartialResults(partialResults: Bundle?) {
+                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                if (!matches.isNullOrEmpty()) {
+                    val bestCandidate = SpanishLanguageUtils.selectBestSpanishCandidate(matches)
+                    val formattedText = SpanishLanguageUtils.formatSpanishText(bestCandidate)
+                    _partialText.value = formattedText
+                }
+            }
+
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+        })
     }
 
     fun startListening(
         onResult: (String) -> Unit,
-        onError: (String) -> Unit
+        onError: (String) -> Unit,
+        overrideLocaleTag: String? = null
     ) {
         if (speechRecognizer == null) {
             initRecognizer()
@@ -113,48 +144,81 @@ class SpeechRecognizerManager(private val context: Context) {
         this.onResultListener = onResult
         this.onErrorListener = onError
 
+        val languageTag = when {
+            !overrideLocaleTag.isNullOrBlank() -> overrideLocaleTag
+            preferredSpanishLocaleTag.isNotBlank() -> preferredSpanishLocaleTag
+            Locale.getDefault().language == "es" -> Locale.getDefault().toString()
+            else -> "es-ES"
+        }
+
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            val currentLocale = Locale.getDefault()
-            val languageTag = if (currentLocale.language == "es") currentLocale.toString() else "es-ES"
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, languageTag)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, languageTag)
+            // Force strict preference for requested Spanish language tag
+            putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, true)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+
+            // Extended silence timeouts tailored for Spanish cadence and natural pauses
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 2000L)
         }
 
         try {
+            speechRecognizer?.cancel()
             speechRecognizer?.startListening(intent)
             _isListening.value = true
         } catch (e: Exception) {
             _isListening.value = false
-            onError("Failed to start listening: ${e.message}")
+            Log.e("SpeechRecognizer", "Error starting listener: ${e.message}")
+            // Re-initialize and retry once if canceled/invalid state
+            initRecognizer()
+            try {
+                speechRecognizer?.startListening(intent)
+                _isListening.value = true
+            } catch (e2: Exception) {
+                onError("No se pudo activar el micrófono: ${e2.message}")
+            }
         }
     }
 
     fun stopListening() {
-        speechRecognizer?.stopListening()
+        try {
+            speechRecognizer?.stopListening()
+        } catch (e: Exception) {
+            Log.w("SpeechRecognizer", "Error stopping listener: ${e.message}")
+        }
         _isListening.value = false
         _audioLevel.value = 0f
     }
 
     fun destroy() {
-        speechRecognizer?.destroy()
+        try {
+            speechRecognizer?.cancel()
+            speechRecognizer?.destroy()
+        } catch (e: Exception) {
+            Log.w("SpeechRecognizer", "Error destroying speech recognizer: ${e.message}")
+        }
         speechRecognizer = null
         _isListening.value = false
+        _audioLevel.value = 0f
     }
 
     private fun getErrorMessage(errorCode: Int): String {
         return when (errorCode) {
-            SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
-            SpeechRecognizer.ERROR_CLIENT -> "Client side error"
-            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Insufficient microphone permissions"
-            SpeechRecognizer.ERROR_NETWORK -> "Network error"
-            SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Network timeout"
-            SpeechRecognizer.ERROR_NO_MATCH -> "No speech match"
-            SpeechRecognizer.ERROR_SERVER -> "Server error"
-            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech input"
-            else -> "Unknown error ($errorCode)"
+            SpeechRecognizer.ERROR_AUDIO -> "Error al grabar audio con el micrófono"
+            SpeechRecognizer.ERROR_CLIENT -> "Error de cliente en el reconocedor de voz"
+            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Permiso de micrófono no concedido"
+            SpeechRecognizer.ERROR_NETWORK -> "Error de red al procesar voz"
+            SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Tiempo de espera de red agotado"
+            SpeechRecognizer.ERROR_NO_MATCH -> "No se detectó voz en español. Intenta de nuevo."
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "El servicio de voz está ocupado"
+            SpeechRecognizer.ERROR_SERVER -> "Error en el servidor de reconocimiento de voz"
+            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No se escuchó voz. Por favor habla de nuevo."
+            else -> "Error de reconocimiento de voz ($errorCode)"
         }
     }
 }
+

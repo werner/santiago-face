@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -63,13 +62,13 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
     val context = LocalContext.current
 
     val emotion by viewModel.emotion.collectAsState()
-    val lastUserText by viewModel.lastUserText.collectAsState()
     val isListening by viewModel.isListening.collectAsState()
     val isThinking by viewModel.isThinking.collectAsState()
     val isSpeaking by viewModel.isSpeaking.collectAsState()
     val showSettings by viewModel.showSettings.collectAsState()
     val showTextInput by viewModel.showTextInput.collectAsState()
     val autoListen by viewModel.autoListen.collectAsState()
+    val spanishLocale by viewModel.spanishLocale.collectAsState()
     val connectionStatus by viewModel.connectionStatus.collectAsState()
     val agentBaseUrl by viewModel.agentBaseUrl.collectAsState()
     val audioLevel by viewModel.audioLevel.collectAsState()
@@ -272,10 +271,12 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
                 currentUrl = agentBaseUrl,
                 connectionStatus = connectionStatus,
                 autoListen = autoListen,
+                spanishLocale = spanishLocale,
                 currentEmotion = emotion,
                 onUrlSave = { viewModel.updateAgentUrl(it) },
                 onTestConnection = { viewModel.testConnection() },
                 onToggleAutoListen = { viewModel.toggleAutoListen(it) },
+                onSelectSpanishLocale = { viewModel.updateSpanishLocale(it) },
                 onSelectEmotion = { viewModel.setEmotion(it) },
                 onResetHistory = { viewModel.resetHistory() },
                 onDismiss = { viewModel.setShowSettings(false) }

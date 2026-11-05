@@ -65,6 +65,9 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     private val _autoListen = MutableStateFlow(prefs.getBoolean("auto_listen", false))
     val autoListen: StateFlow<Boolean> = _autoListen.asStateFlow()
 
+    private val _spanishLocale = MutableStateFlow(prefs.getString("spanish_locale", "es-ES") ?: "es-ES")
+    val spanishLocale: StateFlow<String> = _spanishLocale.asStateFlow()
+
     private val _connectionStatus = MutableStateFlow<Boolean?>(null)
     val connectionStatus: StateFlow<Boolean?> = _connectionStatus.asStateFlow()
 
@@ -72,10 +75,18 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     val partialSpeechText: StateFlow<String> = speechRecognizer.partialText
 
     init {
+        // Configure initial Spanish locale tag for speech recognizer
+        speechRecognizer.updateSpanishLocale(_spanishLocale.value)
         // Persist the clean initial URL
         prefs.edit().putString("agent_url", initialUrl).apply()
         // Initial health check
         testConnection()
+    }
+
+    fun updateSpanishLocale(localeTag: String) {
+        _spanishLocale.value = localeTag
+        prefs.edit().putString("spanish_locale", localeTag).apply()
+        speechRecognizer.updateSpanishLocale(localeTag)
     }
 
     fun updateAgentUrl(newUrl: String) {
@@ -133,7 +144,8 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
             },
             onError = { errorMessage ->
                 _isListening.value = false
-            }
+            },
+            overrideLocaleTag = _spanishLocale.value
         )
     }
 

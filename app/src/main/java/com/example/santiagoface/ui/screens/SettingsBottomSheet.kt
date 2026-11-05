@@ -53,10 +53,12 @@ fun SettingsBottomSheet(
     currentUrl: String,
     connectionStatus: Boolean?,
     autoListen: Boolean,
+    spanishLocale: String,
     currentEmotion: RobotEmotion,
     onUrlSave: (String) -> Unit,
     onTestConnection: () -> Unit,
     onToggleAutoListen: (Boolean) -> Unit,
+    onSelectSpanishLocale: (String) -> Unit,
     onSelectEmotion: (RobotEmotion) -> Unit,
     onResetHistory: () -> Unit,
     onDismiss: () -> Unit
@@ -195,7 +197,52 @@ fun SettingsBottomSheet(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // 3. Manual Emotion Tester
+            // 3. Spanish Region / Dialect Selection
+            Text(
+                text = "Región de Voz en Español",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color.LightGray
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val locales = listOf(
+                "es-ES" to "España",
+                "es-MX" to "México",
+                "es-US" to "EE.UU.",
+                "es-AR" to "Argentina",
+                "es-CO" to "Colombia",
+                "es-CL" to "Chile"
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                locales.forEach { (tag, label) ->
+                    val isSelected = tag == spanishLocale
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isSelected) Color(0xFF00E5FF) else Color(0xFF1B2333))
+                            .clickable { onSelectSpanishLocale(tag) }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isSelected) Color.Black else Color.White
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // 4. Manual Emotion Tester
             Text(
                 text = "Test Robot Emotions",
                 fontSize = 14.sp,
