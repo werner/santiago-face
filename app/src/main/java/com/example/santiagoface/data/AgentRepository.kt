@@ -161,7 +161,7 @@ class AgentRepository(
     suspend fun checkHealth(baseUrl: String): Result<Boolean> = withContext(Dispatchers.IO) {
         runCatching {
             val cleanUrl = cleanBaseUrl(baseUrl)
-            val url = "$cleanUrl/health"
+            val url = "$cleanUrl/api/health"
 
             val request = Request.Builder()
                 .url(url)
