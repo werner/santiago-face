@@ -29,6 +29,7 @@ class SpeechRecognizerManager(private val context: Context) {
     private var onErrorListener: ((String) -> Unit)? = null
 
     private var preferredSpanishLocaleTag: String = "es-ES"
+    private var needsReinitialization: Boolean = false
 
     init {
         initRecognizer()
@@ -39,7 +40,7 @@ class SpeechRecognizerManager(private val context: Context) {
     }
 
     private fun initRecognizer() {
-        destroy()
+        destroyRecognizerQuietly()
 
         val appContext = context.applicationContext
         if (!SpeechRecognizer.isRecognitionAvailable(appContext)) {
@@ -47,17 +48,15 @@ class SpeechRecognizerManager(private val context: Context) {
             return
         }
 
-        // Try on-device speech recognizer if available on Android 12+ (minSdk 31), fallback to standard recognizer
-        speechRecognizer = if (SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)) {
-            try {
-                SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
-            } catch (e: Exception) {
-                Log.w("SpeechRecognizer", "Failed to create on-device recognizer, falling back: ${e.message}")
-                SpeechRecognizer.createSpeechRecognizer(appContext)
-            }
-        } else {
-            SpeechRecognizer.createSpeechRecognizer(appContext)
+        try {
+            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(appContext)
+        } catch (e: Exception) {
+            Log.e("SpeechRecognizer", "Failed to create speech recognizer: ${e.message}")
+            speechRecognizer = null
+            return
         }
+
+        needsReinitialization = false
 
         speechRecognizer?.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
@@ -70,7 +69,6 @@ class SpeechRecognizerManager(private val context: Context) {
             }
 
             override fun onRmsChanged(rmsdB: Float) {
-                // Smooth normalized sound volume level for visualizer
                 val targetLevel = (rmsdB.coerceAtLeast(0f) / 10f).coerceIn(0f, 1f)
                 _audioLevel.value = _audioLevel.value * 0.3f + targetLevel * 0.7f
             }
@@ -88,9 +86,8 @@ class SpeechRecognizerManager(private val context: Context) {
                 val errorMessage = getErrorMessage(error)
                 Log.e("SpeechRecognizer", "Error code $error: $errorMessage")
 
-                // Recover from client / busy errors by resetting speech recognizer
                 if (error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
-                    initRecognizer()
+                    needsReinitialization = true
                 }
 
                 if (error != SpeechRecognizer.ERROR_NO_MATCH && error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
@@ -132,7 +129,7 @@ class SpeechRecognizerManager(private val context: Context) {
         onError: (String) -> Unit,
         overrideLocaleTag: String? = null
     ) {
-        if (speechRecognizer == null) {
+        if (speechRecognizer == null || needsReinitialization) {
             initRecognizer()
         }
 
@@ -155,25 +152,19 @@ class SpeechRecognizerManager(private val context: Context) {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, languageTag)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, languageTag)
-            // Force strict preference for requested Spanish language tag
-            putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, true)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-
-            // Extended silence timeouts tailored for Spanish cadence and natural pauses
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
-            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 2000L)
         }
 
         try {
-            speechRecognizer?.cancel()
+            _partialText.value = ""
             speechRecognizer?.startListening(intent)
             _isListening.value = true
         } catch (e: Exception) {
             _isListening.value = false
             Log.e("SpeechRecognizer", "Error starting listener: ${e.message}")
-            // Re-initialize and retry once if canceled/invalid state
             initRecognizer()
             try {
                 speechRecognizer?.startListening(intent)
@@ -194,14 +185,17 @@ class SpeechRecognizerManager(private val context: Context) {
         _audioLevel.value = 0f
     }
 
-    fun destroy() {
+    private fun destroyRecognizerQuietly() {
         try {
-            speechRecognizer?.cancel()
             speechRecognizer?.destroy()
         } catch (e: Exception) {
             Log.w("SpeechRecognizer", "Error destroying speech recognizer: ${e.message}")
         }
         speechRecognizer = null
+    }
+
+    fun destroy() {
+        destroyRecognizerQuietly()
         _isListening.value = false
         _audioLevel.value = 0f
     }
@@ -221,4 +215,3 @@ class SpeechRecognizerManager(private val context: Context) {
         }
     }
 }
-

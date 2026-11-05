@@ -11,13 +11,11 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -34,7 +32,6 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
@@ -135,9 +132,6 @@ fun RobotFaceCanvas(
         label = "eyeBlinkScale"
     )
 
-    val userDrawnStrokes = remember { mutableStateListOf<DrawnStroke>() }
-    var currentPath by remember { mutableStateOf<Path?>(null) }
-
     Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
@@ -154,26 +148,9 @@ fun RobotFaceCanvas(
             contentScale = ContentScale.Fit
         )
 
-        // Overlay Canvas for Thinking Ring, Aura, Mouth, and Interactive Mouse Drawing
+        // Overlay Canvas for Thinking Ring, Aura, and Mouth
         Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(primaryColor) {
-                    detectDragGestures(
-                        onDragStart = { offset ->
-                            val newPath = Path().apply { moveTo(offset.x, offset.y) }
-                            currentPath = newPath
-                            userDrawnStrokes.add(DrawnStroke(newPath, primaryColor))
-                        },
-                        onDrag = { change, _ ->
-                            change.consume()
-                            currentPath?.lineTo(change.position.x, change.position.y)
-                        },
-                        onDragEnd = {
-                            currentPath = null
-                        }
-                    )
-                }
+            modifier = Modifier.fillMaxSize()
         ) {
             val width = size.width
             val height = size.height
@@ -217,28 +194,9 @@ fun RobotFaceCanvas(
                 mouthColor = eyeColor,
                 speechPhase = speechPhase
             )
-
-            // Interactive User Mouse Strokes
-            for (stroke in userDrawnStrokes) {
-                drawPath(
-                    path = stroke.path,
-                    color = stroke.color.copy(alpha = 0.35f),
-                    style = Stroke(width = 22f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                )
-                drawPath(
-                    path = stroke.path,
-                    color = stroke.color,
-                    style = Stroke(width = 10f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                )
-            }
         }
     }
 }
-
-data class DrawnStroke(
-    val path: Path,
-    val color: Color
-)
 
 private fun DrawScope.drawRobotMouth(
     centerX: Float,

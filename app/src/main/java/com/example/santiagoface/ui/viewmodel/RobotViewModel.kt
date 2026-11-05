@@ -46,8 +46,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     private val _lastAgentText = MutableStateFlow("")
     val lastAgentText: StateFlow<String> = _lastAgentText.asStateFlow()
 
-    private val _isListening = MutableStateFlow(false)
-    val isListening: StateFlow<Boolean> = _isListening.asStateFlow()
+    val isListening: StateFlow<Boolean> = speechRecognizer.isListening
 
     private val _isThinking = MutableStateFlow(false)
     val isThinking: StateFlow<Boolean> = _isThinking.asStateFlow()
@@ -119,9 +118,8 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        if (_isListening.value) {
+        if (isListening.value) {
             speechRecognizer.stopListening()
-            _isListening.value = false
         } else {
             startListening()
         }
@@ -134,16 +132,13 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
             ttsManager.stop()
         }
 
-        _isListening.value = true
-
         speechRecognizer.startListening(
             onResult = { recognizedText ->
-                _isListening.value = false
                 _lastUserText.value = recognizedText
                 processUserMessage(recognizedText)
             },
             onError = { errorMessage ->
-                _isListening.value = false
+                // Logged by SpeechRecognizerManager
             },
             overrideLocaleTag = _spanishLocale.value
         )
