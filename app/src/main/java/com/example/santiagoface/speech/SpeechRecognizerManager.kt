@@ -15,6 +15,7 @@ import java.util.Locale
 class SpeechRecognizerManager(private val context: Context) {
 
     private var speechRecognizer: SpeechRecognizer? = null
+    private val audioFeatureExtractor = AudioFeatureExtractor()
 
     private val _isListening = MutableStateFlow(false)
     val isListening: StateFlow<Boolean> = _isListening.asStateFlow()
@@ -25,6 +26,7 @@ class SpeechRecognizerManager(private val context: Context) {
     private val _audioLevel = MutableStateFlow(0f)
     val audioLevel: StateFlow<Float> = _audioLevel.asStateFlow()
 
+    private var onResultWithAudioListener: ((String, AudioAnalysisResult?) -> Unit)? = null
     private var onResultListener: ((String) -> Unit)? = null
     private var onErrorListener: ((String) -> Unit)? = null
 
@@ -71,6 +73,7 @@ class SpeechRecognizerManager(private val context: Context) {
             override fun onRmsChanged(rmsdB: Float) {
                 val targetLevel = (rmsdB.coerceAtLeast(0f) / 10f).coerceIn(0f, 1f)
                 _audioLevel.value = _audioLevel.value * 0.3f + targetLevel * 0.7f
+                audioFeatureExtractor.addRmsDb(rmsdB)
             }
 
             override fun onBufferReceived(buffer: ByteArray?) {}
@@ -83,6 +86,7 @@ class SpeechRecognizerManager(private val context: Context) {
             override fun onError(error: Int) {
                 _isListening.value = false
                 _audioLevel.value = 0f
+                audioFeatureExtractor.stop()
                 val errorMessage = getErrorMessage(error)
                 Log.e("SpeechRecognizer", "Error code $error: $errorMessage")
 
@@ -100,12 +104,17 @@ class SpeechRecognizerManager(private val context: Context) {
             override fun onResults(results: Bundle?) {
                 _isListening.value = false
                 _audioLevel.value = 0f
+                val audioAnalysis = audioFeatureExtractor.stopAndAnalyze()
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (!matches.isNullOrEmpty()) {
                     val bestCandidate = SpanishLanguageUtils.selectBestSpanishCandidate(matches)
                     val formattedText = SpanishLanguageUtils.formatSpanishText(bestCandidate)
                     _partialText.value = formattedText
-                    onResultListener?.invoke(formattedText)
+                    if (onResultWithAudioListener != null) {
+                        onResultWithAudioListener?.invoke(formattedText, audioAnalysis)
+                    } else {
+                        onResultListener?.invoke(formattedText)
+                    }
                 } else {
                     onErrorListener?.invoke("No se encontraron resultados de voz en español")
                 }
@@ -125,7 +134,7 @@ class SpeechRecognizerManager(private val context: Context) {
     }
 
     fun startListening(
-        onResult: (String) -> Unit,
+        onResult: (text: String, audioAnalysis: AudioAnalysisResult?) -> Unit,
         onError: (String) -> Unit,
         overrideLocaleTag: String? = null
     ) {
@@ -138,7 +147,8 @@ class SpeechRecognizerManager(private val context: Context) {
             return
         }
 
-        this.onResultListener = onResult
+        this.onResultWithAudioListener = onResult
+        this.onResultListener = null
         this.onErrorListener = onError
 
         val languageTag = when {
@@ -160,22 +170,39 @@ class SpeechRecognizerManager(private val context: Context) {
 
         try {
             _partialText.value = ""
+            audioFeatureExtractor.start()
             speechRecognizer?.startListening(intent)
             _isListening.value = true
         } catch (e: Exception) {
             _isListening.value = false
+            audioFeatureExtractor.stop()
             Log.e("SpeechRecognizer", "Error starting listener: ${e.message}")
             initRecognizer()
             try {
+                audioFeatureExtractor.start()
                 speechRecognizer?.startListening(intent)
                 _isListening.value = true
             } catch (e2: Exception) {
+                audioFeatureExtractor.stop()
                 onError("No se pudo activar el micrófono: ${e2.message}")
             }
         }
     }
 
+    fun startListening(
+        onResult: (String) -> Unit,
+        onError: (String) -> Unit,
+        overrideLocaleTag: String?
+    ) {
+        startListening(
+            onResult = { text, _ -> onResult(text) },
+            onError = onError,
+            overrideLocaleTag = overrideLocaleTag
+        )
+    }
+
     fun stopListening() {
+        audioFeatureExtractor.stop()
         try {
             speechRecognizer?.stopListening()
         } catch (e: Exception) {
@@ -186,6 +213,7 @@ class SpeechRecognizerManager(private val context: Context) {
     }
 
     private fun destroyRecognizerQuietly() {
+        audioFeatureExtractor.stop()
         try {
             speechRecognizer?.destroy()
         } catch (e: Exception) {

@@ -13,7 +13,15 @@ import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
 data class AgentRequest(
-    val message: String
+    val message: String,
+    @SerializedName("audio_information")
+    val audioInformation: String? = null,
+    @SerializedName("voice_features")
+    val voiceFeatures: String? = null,
+    val sounds: String? = null,
+    @SerializedName("image_base64")
+    val image: String? = null,
+    val images: List<String>? = null
 )
 
 data class LocationRequest(
@@ -107,14 +115,31 @@ class AgentRepository(
     }
 
     /**
-     * Sends a message to the Santiago Agent and receives the emotion and spoken text response.
+     * Sends a message along with optional audio info, voice features, sounds, and images to the Santiago Agent and receives the emotion and spoken text response.
      */
-    suspend fun sendMessage(baseUrl: String, userMessage: String): Result<AgentResponse> = withContext(Dispatchers.IO) {
+    suspend fun sendMessage(
+        baseUrl: String,
+        userMessage: String,
+        audioInformation: String? = null,
+        voiceFeatures: String? = null,
+        sounds: String? = null,
+        image: String? = null,
+        images: List<String>? = null
+    ): Result<AgentResponse> = withContext(Dispatchers.IO) {
         runCatching {
             val cleanUrl = cleanBaseUrl(baseUrl)
             val url = "$cleanUrl/api/message"
 
-            val jsonBody = gson.toJson(AgentRequest(message = userMessage))
+            val jsonBody = gson.toJson(
+                AgentRequest(
+                    message = userMessage,
+                    audioInformation = audioInformation,
+                    voiceFeatures = voiceFeatures,
+                    sounds = sounds,
+                    image = image,
+                    images = images
+                )
+            )
             val request = Request.Builder()
                 .url(url)
                 .applyApiKey()

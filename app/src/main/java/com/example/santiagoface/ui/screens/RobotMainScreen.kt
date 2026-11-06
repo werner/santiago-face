@@ -85,7 +85,8 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
-        val isAudioGranted = permissions[Manifest.permission.RECORD_AUDIO] == true
+        val isAudioGranted = permissions[Manifest.permission.RECORD_AUDIO] == true ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         val isLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true || permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
         
         if (isLocationGranted) {
@@ -119,11 +120,10 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
             } catch (e: SecurityException) {}
         }
         
-        if (hasAudio && hasLoc) {
+        if (hasAudio) {
             viewModel.toggleListening()
         } else {
-            val permissionsToRequest = mutableListOf<String>()
-            if (!hasAudio) permissionsToRequest.add(Manifest.permission.RECORD_AUDIO)
+            val permissionsToRequest = mutableListOf(Manifest.permission.RECORD_AUDIO)
             if (!hasLoc) {
                 permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
                 permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)

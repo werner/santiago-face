@@ -139,9 +139,14 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         speechRecognizer.startListening(
-            onResult = { recognizedText ->
+            onResult = { recognizedText, audioAnalysis ->
                 _lastUserText.value = recognizedText
-                processUserMessage(recognizedText)
+                processUserMessage(
+                    message = recognizedText,
+                    audioInformation = audioAnalysis?.audioInformation,
+                    voiceFeatures = audioAnalysis?.voiceFeatures,
+                    sounds = audioAnalysis?.sounds
+                )
             },
             onError = { errorMessage ->
                 // Logged by SpeechRecognizerManager
@@ -158,15 +163,26 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun processUserMessage(message: String) {
+    fun processUserMessage(
+        message: String,
+        audioInformation: String? = null,
+        voiceFeatures: String? = null,
+        sounds: String? = null
+    ) {
         val trimmed = message.trim()
-        if (trimmed.isEmpty()) return
+        if (trimmed.isEmpty() && audioInformation.isNullOrBlank() && voiceFeatures.isNullOrBlank() && sounds.isNullOrBlank()) return
 
-        _lastUserText.value = trimmed
+        _lastUserText.value = trimmed.ifEmpty { "[Audio/Sound Input]" }
         _isThinking.value = true
 
         viewModelScope.launch {
-            val result = agentRepository.sendMessage(_agentBaseUrl.value, trimmed)
+            val result = agentRepository.sendMessage(
+                baseUrl = _agentBaseUrl.value,
+                userMessage = trimmed,
+                audioInformation = audioInformation,
+                voiceFeatures = voiceFeatures,
+                sounds = sounds
+            )
             _isThinking.value = false
 
             result.onSuccess { response ->
