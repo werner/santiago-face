@@ -16,6 +16,11 @@ data class AgentRequest(
     val message: String
 )
 
+data class LocationRequest(
+    val latitude: Double,
+    val longitude: Double
+)
+
 data class AgentResponse(
     val emotion: String? = "neutral",
     val text: String? = "",
@@ -167,6 +172,31 @@ class AgentRepository(
                 .url(url)
                 .applyApiKey()
                 .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    val errorBody = response.body?.string() ?: ""
+                    throw Exception("HTTP ${response.code}: $errorBody")
+                }
+                true
+            }
+        }
+    }
+
+    /**
+     * Sends the current location to the agent.
+     */
+    suspend fun sendLocation(baseUrl: String, lat: Double, lon: Double): Result<Boolean> = withContext(Dispatchers.IO) {
+        runCatching {
+            val cleanUrl = cleanBaseUrl(baseUrl)
+            val url = "$cleanUrl/api/location"
+
+            val jsonBody = gson.toJson(LocationRequest(latitude = lat, longitude = lon))
+            val request = Request.Builder()
+                .url(url)
+                .applyApiKey()
+                .post(jsonBody.toRequestBody(jsonMediaType))
                 .build()
 
             client.newCall(request).execute().use { response ->

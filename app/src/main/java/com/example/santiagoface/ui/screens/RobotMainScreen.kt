@@ -39,8 +39,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -48,6 +50,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import com.google.android.gms.location.LocationServices
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -76,24 +79,71 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
     val spokenWord by viewModel.spokenWord.collectAsState()
     val mouthOpening by viewModel.mouthOpening.collectAsState()
 
-    // Permission launcher for microphone
+    val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+
+    // Permission launcher for microphone and location
     val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val isAudioGranted = permissions[Manifest.permission.RECORD_AUDIO] == true
+        val isLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true || permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        
+        if (isLocationGranted) {
+            try {
+                fusedLocationClient.lastLocation.addOnSuccessListener { location: android.location.Location? ->
+                    location?.let {
+                        viewModel.updateLocation(it.latitude, it.longitude)
+                    }
+                }
+            } catch (e: SecurityException) {
+                // Ignore
+            }
+        }
+        
+        if (isAudioGranted) {
             viewModel.startListening()
         }
     }
 
     fun handleMicClick() {
-        val permissionCheck = ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.RECORD_AUDIO
-        )
-        if (permissionCheck == PackageManager.PERMISSION_GRANTED) {
+        val hasAudio = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        val hasLoc = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        
+        if (hasLoc) {
+            try {
+                fusedLocationClient.lastLocation.addOnSuccessListener { location: android.location.Location? ->
+                    location?.let {
+                        viewModel.updateLocation(it.latitude, it.longitude)
+                    }
+                }
+            } catch (e: SecurityException) {}
+        }
+        
+        if (hasAudio && hasLoc) {
             viewModel.toggleListening()
         } else {
-            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            val permissionsToRequest = mutableListOf<String>()
+            if (!hasAudio) permissionsToRequest.add(Manifest.permission.RECORD_AUDIO)
+            if (!hasLoc) {
+                permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+                permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+            permissionLauncher.launch(permissionsToRequest.toTypedArray())
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val hasLoc = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (hasLoc) {
+            try {
+                fusedLocationClient.lastLocation.addOnSuccessListener { location: android.location.Location? ->
+                    location?.let {
+                        viewModel.updateLocation(it.latitude, it.longitude)
+                    }
+                }
+            } catch (e: SecurityException) {
+                // Ignore
+            }
         }
     }
 

@@ -73,6 +73,12 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     val audioLevel: StateFlow<Float> = speechRecognizer.audioLevel
     val partialSpeechText: StateFlow<String> = speechRecognizer.partialText
 
+    private val _currentLatitude = MutableStateFlow<Double?>(null)
+    val currentLatitude: StateFlow<Double?> = _currentLatitude.asStateFlow()
+
+    private val _currentLongitude = MutableStateFlow<Double?>(null)
+    val currentLongitude: StateFlow<Double?> = _currentLongitude.asStateFlow()
+
     init {
         // Configure initial Spanish locale tag for speech recognizer
         speechRecognizer.updateSpanishLocale(_spanishLocale.value)
@@ -144,6 +150,14 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    fun updateLocation(lat: Double, lon: Double) {
+        _currentLatitude.value = lat
+        _currentLongitude.value = lon
+        viewModelScope.launch {
+            agentRepository.sendLocation(_agentBaseUrl.value, lat, lon)
+        }
+    }
+
     fun processUserMessage(message: String) {
         val trimmed = message.trim()
         if (trimmed.isEmpty()) return
@@ -197,6 +211,14 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
                 _connectionStatus.value = isOk
             }.onFailure { err ->
                 _connectionStatus.value = false
+            }
+        }
+        
+        viewModelScope.launch {
+            val lat = _currentLatitude.value
+            val lon = _currentLongitude.value
+            if (lat != null && lon != null) {
+                agentRepository.sendLocation(_agentBaseUrl.value, lat, lon)
             }
         }
     }
