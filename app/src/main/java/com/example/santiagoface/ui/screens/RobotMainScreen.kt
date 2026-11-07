@@ -284,50 +284,6 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
             }
         }
 
-        // 4. Autonomous Visual Navigation Banner (Top Center)
-        AnimatedVisibility(
-            visible = isContinuousVisionLoopActive,
-            enter = fadeIn(),
-            exit = fadeOut(),
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 95.dp)
-        ) {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF141E2E).copy(alpha = 0.95f)),
-                shape = RoundedCornerShape(20.dp),
-                border = BorderStroke(1.5.dp, Color(0xFF00E5FF))
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(10.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF00E5FF))
-                    )
-                    Text(
-                        text = "VISUAL ${activeGoal?.uppercase() ?: "CONTROL"}: ${activeTarget ?: "BUSCANDO..."}",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Button(
-                        onClick = { viewModel.stopContinuousVisionLoop() },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF1744)),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                        modifier = Modifier.height(28.dp)
-                    ) {
-                        Text("DETENER", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
         // 5. Speech / Status Display Banner (Center Bottom overlay)
         Column(
             modifier = Modifier
