@@ -299,7 +299,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
                 _lastVisionAnalysis.value = response.visionAnalysis
                 _lastVisualMatches.value = response.visualMatches
 
-                val replyText = response.text?.trim() ?: "No text reply"
+                val replyText = response.text?.trim().orEmpty()
                 _lastAgentText.value = replyText
 
                 // Check if response triggered or updated continuous visual loop
@@ -316,7 +316,9 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                speakReply(replyText)
+                if (replyText.isNotEmpty()) {
+                    speakReply(replyText)
+                }
             }.onFailure { error ->
                 _emotion.value = RobotEmotion.SAD
                 val errorMsg = "Error: ${error.message ?: "Failed to connect to agent"}"
@@ -375,10 +377,6 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
                     if (response.navigationBehavior.equals("stop_at_target", ignoreCase = true)) {
                         stopContinuousVisionLoop()
-                        _emotion.value = RobotEmotion.HAPPY
-                        val text = response.actionReason.ifBlank { "¡Objetivo alcanzado!" }
-                        _lastAgentText.value = text
-                        speakReply(text)
                     }
                 }.onFailure { err ->
                     // Continue loop next tick

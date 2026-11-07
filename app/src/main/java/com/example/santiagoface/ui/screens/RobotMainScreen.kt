@@ -87,7 +87,6 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
     val mouthOpening by viewModel.mouthOpening.collectAsState()
 
     val isCameraActive by viewModel.isCameraActive.collectAsState()
-    val lastVisionAnalysis by viewModel.lastVisionAnalysis.collectAsState()
     val isContinuousVisionLoopActive by viewModel.isContinuousVisionLoopActive.collectAsState()
     val activeGoal by viewModel.activeGoal.collectAsState()
     val activeTarget by viewModel.activeTarget.collectAsState()
@@ -282,9 +281,6 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
                     viewModel = viewModel,
                     onClose = { viewModel.stopCamera() }
                 )
-                lastVisionAnalysis?.let { analysis ->
-                    VisionAnalysisOverlay(analysis = analysis)
-                }
             }
         }
 
