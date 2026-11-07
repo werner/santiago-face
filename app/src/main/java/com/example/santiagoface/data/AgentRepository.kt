@@ -21,19 +21,153 @@ data class AgentRequest(
     val sounds: String? = null,
     @SerializedName("image_base64")
     val image: String? = null,
-    val images: List<String>? = null
+    val images: List<String>? = null,
+    val goal: String? = null,               // "approach" | "search" | "avoid" | "align" | "observe"
+    val target: String? = null,             // e.g. "person_werner", "red_mug"
+    @SerializedName("reference_size_cm")
+    val referenceSizeCm: Float? = null,     // e.g. 22.0f for face, 15.0f for mug
+    @SerializedName("target_distance_cm")
+    val targetDistanceCm: Float? = null,    // e.g. 25.0f
+    @SerializedName("camera_fov_deg")
+    val cameraFovDeg: Float? = null,        // e.g. 62.5f
+    @SerializedName("auto_act")
+    val autoAct: Boolean? = null
 )
 
-data class LocationRequest(
-    val latitude: Double,
-    val longitude: Double
+data class BoundingBoxDto(
+    val x: Float = 0f,
+    val y: Float = 0f,
+    val width: Float = 0f,
+    val height: Float = 0f,
+    @SerializedName("center_x")
+    val centerX: Float = 0.5f,
+    @SerializedName("center_y")
+    val centerY: Float = 0.5f,
+    @SerializedName("area_ratio")
+    val areaRatio: Float = 0f
+)
+
+data class VisualMatchDto(
+    val id: Long = 0,
+    val key: String? = null,
+    val category: String = "general",
+    val content: String = "",
+    @SerializedName("has_image")
+    val hasImage: Boolean = false,
+    val similarity: Float? = null,
+    @SerializedName("estimated_distance_cm")
+    val estimatedDistanceCm: Float? = null,
+    @SerializedName("distance_zone")
+    val distanceZone: String? = null,
+    val bearing: String? = null,
+    @SerializedName("recommended_action")
+    val recommendedAction: String? = null,
+    @SerializedName("created_at")
+    val createdAt: Long? = null
+)
+
+data class VisionAnalysisDto(
+    @SerializedName("subject_visible")
+    val subjectVisible: Boolean = false,
+    @SerializedName("detected_category")
+    val detectedCategory: String = "none",
+    @SerializedName("face_detected")
+    val faceDetected: Boolean = false,
+    @SerializedName("face_confidence")
+    val faceConfidence: Float = 0f,
+    @SerializedName("bounding_box")
+    val boundingBox: BoundingBoxDto? = null,
+    @SerializedName("estimated_distance_cm")
+    val estimatedDistanceCm: Float? = null,
+    @SerializedName("estimated_distance_m")
+    val estimatedDistanceM: Float? = null,
+    @SerializedName("distance_zone")
+    val distanceZone: String = "not_visible",
+    val bearing: String = "none",
+    @SerializedName("bearing_degrees")
+    val bearingDegrees: Float = 0f,
+    @SerializedName("horizontal_offset")
+    val horizontalOffset: Float? = null,
+    @SerializedName("closing_rate")
+    val closingRate: Float? = null,
+    @SerializedName("target_query")
+    val targetQuery: String? = null,
+    @SerializedName("target_found")
+    val targetFound: Boolean = false,
+    @SerializedName("recognized_key")
+    val recognizedKey: String? = null,
+    @SerializedName("recognized_content")
+    val recognizedContent: String? = null,
+    @SerializedName("recognition_similarity")
+    val recognitionSimilarity: Float? = null,
+    @SerializedName("navigation_behavior")
+    val navigationBehavior: String = "observe",
+    @SerializedName("recommended_action")
+    val recommendedAction: String = "stop",
+    @SerializedName("recommended_speed")
+    val recommendedSpeed: Int? = null,
+    @SerializedName("action_reason")
+    val actionReason: String = ""
 )
 
 data class AgentResponse(
     val emotion: String? = "neutral",
     val text: String? = "",
     @SerializedName("tool_call")
-    val toolCall: Any? = null // Tool calls are ignored by the app as per requirements
+    val toolCall: Any? = null,
+    @SerializedName("esp32_response")
+    val esp32Response: String? = null,
+    @SerializedName("esp32_error")
+    val esp32Error: String? = null,
+    @SerializedName("visual_matches")
+    val visualMatches: List<VisualMatchDto>? = null,
+    @SerializedName("vision_analysis")
+    val visionAnalysis: VisionAnalysisDto? = null
+)
+
+data class VisionActRequest(
+    @SerializedName("image_base64")
+    val image: String? = null,
+    val images: List<String>? = null,
+    val goal: String? = null,               // "approach" | "search" | "avoid" | "align" | "observe"
+    val target: String? = null,             // e.g. "person_werner", "red_mug"
+    val category: String? = null,           // "person" | "object"
+    @SerializedName("scan_direction")
+    val scanDirection: String? = null,      // "right" | "left"
+    @SerializedName("reference_size_cm")
+    val referenceSizeCm: Float? = null,
+    @SerializedName("target_distance_cm")
+    val targetDistanceCm: Float? = null,
+    @SerializedName("camera_fov_deg")
+    val cameraFovDeg: Float? = null,
+    @SerializedName("execute_hardware")
+    val executeHardware: Boolean? = true
+)
+
+data class VisionActResponse(
+    @SerializedName("navigation_behavior")
+    val navigationBehavior: String = "observe",
+    @SerializedName("executed_action")
+    val executedAction: String = "stop",
+    @SerializedName("executed_speed")
+    val executedSpeed: Int? = null,
+    @SerializedName("target_found")
+    val targetFound: Boolean = false,
+    @SerializedName("action_reason")
+    val actionReason: String = "",
+    @SerializedName("vision_analysis")
+    val visionAnalysis: VisionAnalysisDto? = null,
+    @SerializedName("visual_matches")
+    val visualMatches: List<VisualMatchDto>? = null,
+    @SerializedName("esp32_response")
+    val esp32Response: String? = null,
+    @SerializedName("esp32_error")
+    val esp32Error: String? = null
+)
+
+data class LocationRequest(
+    val latitude: Double,
+    val longitude: Double
 )
 
 /**
@@ -115,7 +249,7 @@ class AgentRepository(
     }
 
     /**
-     * Sends a message along with optional audio info, voice features, sounds, and images to the Santiago Agent and receives the emotion and spoken text response.
+     * Sends a message along with optional audio info, voice features, sounds, images, and vision targets to the Santiago Agent.
      */
     suspend fun sendMessage(
         baseUrl: String,
@@ -124,7 +258,13 @@ class AgentRepository(
         voiceFeatures: String? = null,
         sounds: String? = null,
         image: String? = null,
-        images: List<String>? = null
+        images: List<String>? = null,
+        goal: String? = null,
+        target: String? = null,
+        referenceSizeCm: Float? = null,
+        targetDistanceCm: Float? = null,
+        cameraFovDeg: Float? = null,
+        autoAct: Boolean? = null
     ): Result<AgentResponse> = withContext(Dispatchers.IO) {
         runCatching {
             val cleanUrl = cleanBaseUrl(baseUrl)
@@ -137,7 +277,13 @@ class AgentRepository(
                     voiceFeatures = voiceFeatures,
                     sounds = sounds,
                     image = image,
-                    images = images
+                    images = images,
+                    goal = goal,
+                    target = target,
+                    referenceSizeCm = referenceSizeCm,
+                    targetDistanceCm = targetDistanceCm,
+                    cameraFovDeg = cameraFovDeg,
+                    autoAct = autoAct
                 )
             )
             val request = Request.Builder()
@@ -157,6 +303,61 @@ class AgentRepository(
 
                 val agentResponse = gson.fromJson(responseBody, AgentResponse::class.java)
                 agentResponse ?: AgentResponse(emotion = "neutral", text = "Sorry, I received an empty response.")
+            }
+        }
+    }
+
+    /**
+     * Sends a fast autonomous vision action request (POST /api/vision/act) to Santiago Agent.
+     */
+    suspend fun sendVisionAct(
+        baseUrl: String,
+        image: String? = null,
+        images: List<String>? = null,
+        goal: String? = null,
+        target: String? = null,
+        category: String? = null,
+        scanDirection: String? = null,
+        referenceSizeCm: Float? = null,
+        targetDistanceCm: Float? = null,
+        cameraFovDeg: Float? = null,
+        executeHardware: Boolean? = true
+    ): Result<VisionActResponse> = withContext(Dispatchers.IO) {
+        runCatching {
+            val cleanUrl = cleanBaseUrl(baseUrl)
+            val url = "$cleanUrl/api/vision/act"
+
+            val jsonBody = gson.toJson(
+                VisionActRequest(
+                    image = image,
+                    images = images,
+                    goal = goal,
+                    target = target,
+                    category = category,
+                    scanDirection = scanDirection,
+                    referenceSizeCm = referenceSizeCm,
+                    targetDistanceCm = targetDistanceCm,
+                    cameraFovDeg = cameraFovDeg,
+                    executeHardware = executeHardware
+                )
+            )
+            val request = Request.Builder()
+                .url(url)
+                .applyApiKey()
+                .post(jsonBody.toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    val errorBody = response.body?.string() ?: ""
+                    throw Exception("Vision act returned error HTTP ${response.code}: $errorBody")
+                }
+
+                val responseBody = response.body?.string()
+                    ?: throw Exception("Empty response body from vision act")
+
+                val visionActResponse = gson.fromJson(responseBody, VisionActResponse::class.java)
+                visionActResponse ?: VisionActResponse()
             }
         }
     }

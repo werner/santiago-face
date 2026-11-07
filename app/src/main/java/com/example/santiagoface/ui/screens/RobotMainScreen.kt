@@ -15,10 +15,10 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -32,16 +32,16 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MicNone
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -51,23 +51,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import com.google.android.gms.location.LocationServices
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.santiagoface.ui.face.RobotFaceCanvas
 import com.example.santiagoface.ui.viewmodel.RobotViewModel
+import com.google.android.gms.location.LocationServices
 
 @Composable
 fun RobotMainScreen(viewModel: RobotViewModel) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     val emotion by viewModel.emotion.collectAsState()
     val isListening by viewModel.isListening.collectAsState()
@@ -85,16 +85,24 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
     val spokenWord by viewModel.spokenWord.collectAsState()
     val mouthOpening by viewModel.mouthOpening.collectAsState()
 
+    val isCameraActive by viewModel.isCameraActive.collectAsState()
+    val lastVisionAnalysis by viewModel.lastVisionAnalysis.collectAsState()
+    val isContinuousVisionLoopActive by viewModel.isContinuousVisionLoopActive.collectAsState()
+    val activeGoal by viewModel.activeGoal.collectAsState()
+    val activeTarget by viewModel.activeTarget.collectAsState()
+
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
-    // Permission launcher for microphone and location
+    // Permission launcher for microphone, camera, and location
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         val isAudioGranted = permissions[Manifest.permission.RECORD_AUDIO] == true ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        val isCameraGranted = permissions[Manifest.permission.CAMERA] == true ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         val isLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true || permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
-        
+
         if (isLocationGranted) {
             try {
                 fusedLocationClient.lastLocation.addOnSuccessListener { location: android.location.Location? ->
@@ -106,16 +114,20 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
                 // Ignore
             }
         }
-        
+
         if (isAudioGranted) {
             viewModel.enableMicrophone()
+        }
+
+        if (isCameraGranted) {
+            viewModel.startCamera(lifecycleOwner)
         }
     }
 
     fun handleEnableMicClick() {
         val hasAudio = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         val hasLoc = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        
+
         if (hasLoc) {
             try {
                 fusedLocationClient.lastLocation.addOnSuccessListener { location: android.location.Location? ->
@@ -125,7 +137,7 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
                 }
             } catch (e: SecurityException) {}
         }
-        
+
         if (hasAudio) {
             viewModel.enableMicrophone()
         } else {
@@ -140,6 +152,20 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
 
     fun handleDisableMicClick() {
         viewModel.disableMicrophone()
+    }
+
+    fun handleToggleCameraClick() {
+        val hasCamera = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        if (hasCamera) {
+            viewModel.toggleCamera(lifecycleOwner)
+        } else {
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.CAMERA,
+                    Manifest.permission.RECORD_AUDIO
+                )
+            )
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -199,7 +225,7 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
                     Text(
-                        text = "",
+                        text = "SANTIAGO",
                         color = Color(0xFF00E5FF),
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
@@ -218,8 +244,15 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
                 }
             }
 
-            // Quick Actions
+            // Quick Actions (Camera, Text Input, Settings)
             Row {
+                IconButton(onClick = { handleToggleCameraClick() }) {
+                    Icon(
+                        imageVector = if (isCameraActive) Icons.Default.Videocam else Icons.Default.VideocamOff,
+                        contentDescription = "Camera Toggle",
+                        tint = if (isCameraActive) Color(0xFF00E5FF) else Color.White
+                    )
+                }
                 IconButton(onClick = { viewModel.setShowTextInput(true) }) {
                     Icon(
                         imageVector = Icons.Default.Edit,
@@ -237,7 +270,68 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
             }
         }
 
-        // 3. Speech / Status Display Banner (Center Bottom overlay)
+        // 3. Live Camera Preview Overlay Card (Top Right)
+        if (isCameraActive) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 90.dp, end = 20.dp)
+            ) {
+                CameraPreviewCard(
+                    viewModel = viewModel,
+                    onClose = { viewModel.stopCamera() }
+                )
+                lastVisionAnalysis?.let { analysis ->
+                    VisionAnalysisOverlay(analysis = analysis)
+                }
+            }
+        }
+
+        // 4. Autonomous Visual Navigation Banner (Top Center)
+        AnimatedVisibility(
+            visible = isContinuousVisionLoopActive,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 95.dp)
+        ) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF141E2E).copy(alpha = 0.95f)),
+                shape = RoundedCornerShape(20.dp),
+                border = BorderStroke(1.5.dp, Color(0xFF00E5FF))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(10.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF00E5FF))
+                    )
+                    Text(
+                        text = "VISUAL ${activeGoal?.uppercase() ?: "CONTROL"}: ${activeTarget ?: "BUSCANDO..."}",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Button(
+                        onClick = { viewModel.stopContinuousVisionLoop() },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF1744)),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Text("DETENER", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // 5. Speech / Status Display Banner (Center Bottom overlay)
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -267,7 +361,7 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
             }
         }
 
-        // 4. Bottom Mic Control Bar (2 Buttons: Enable Microphone & Turn Off Microphone)
+        // 6. Bottom Mic Control Bar (2 Buttons: Enable Microphone & Turn Off Microphone)
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -335,7 +429,7 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
             }
         }
 
-        // 5. Settings Bottom Sheet
+        // 7. Settings Bottom Sheet
         if (showSettings) {
             SettingsBottomSheet(
                 currentUrl = agentBaseUrl,
@@ -353,7 +447,7 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
             )
         }
 
-        // 6. Manual Text Input Dialog
+        // 8. Manual Text Input Dialog
         if (showTextInput) {
             TextInputDialog(
                 onSendMessage = { viewModel.processUserMessage(it) },
