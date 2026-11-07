@@ -44,6 +44,9 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     private val _agentBaseUrl = MutableStateFlow(initialUrl)
     val agentBaseUrl: StateFlow<String> = _agentBaseUrl.asStateFlow()
 
+    private val _agentName = MutableStateFlow("SANTIAGO")
+    val agentName: StateFlow<String> = _agentName.asStateFlow()
+
     // State Variables
     private val _emotion = MutableStateFlow(RobotEmotion.NEUTRAL)
     val emotion: StateFlow<RobotEmotion> = _emotion.asStateFlow()
@@ -429,6 +432,15 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
                 _connectionStatus.value = isOk
             }.onFailure { err ->
                 _connectionStatus.value = false
+            }
+        }
+
+        viewModelScope.launch {
+            val nameResult = agentRepository.fetchAgentName(_agentBaseUrl.value)
+            nameResult.onSuccess { name ->
+                if (name.isNotBlank()) {
+                    _agentName.value = name.uppercase()
+                }
             }
         }
 

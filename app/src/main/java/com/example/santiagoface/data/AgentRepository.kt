@@ -12,6 +12,11 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
+data class AgentNameResponse(
+    @SerializedName("agent_name")
+    val agentName: String? = null
+)
+
 data class AgentRequest(
     val message: String,
     @SerializedName("audio_information")
@@ -431,6 +436,35 @@ class AgentRepository(
                     throw Exception("HTTP ${response.code}: $errorBody")
                 }
                 true
+            }
+        }
+    }
+
+    /**
+     * Fetches the agent's name from /api/name.
+     */
+    suspend fun fetchAgentName(baseUrl: String): Result<String> = withContext(Dispatchers.IO) {
+        runCatching {
+            val cleanUrl = cleanBaseUrl(baseUrl)
+            val url = "$cleanUrl/api/name"
+
+            val request = Request.Builder()
+                .url(url)
+                .applyApiKey()
+                .get()
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    val errorBody = response.body?.string() ?: ""
+                    throw Exception("HTTP ${response.code}: $errorBody")
+                }
+
+                val responseBody = response.body?.string()
+                    ?: throw Exception("Empty response body from agent name API")
+
+                val nameResponse = gson.fromJson(responseBody, AgentNameResponse::class.java)
+                nameResponse?.agentName ?: "SANTIAGO"
             }
         }
     }

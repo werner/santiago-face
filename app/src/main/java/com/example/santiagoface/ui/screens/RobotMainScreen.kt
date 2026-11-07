@@ -80,6 +80,7 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
     val spanishLocale by viewModel.spanishLocale.collectAsState()
     val connectionStatus by viewModel.connectionStatus.collectAsState()
     val agentBaseUrl by viewModel.agentBaseUrl.collectAsState()
+    val agentName by viewModel.agentName.collectAsState()
     val audioLevel by viewModel.audioLevel.collectAsState()
     val partialSpeechText by viewModel.partialSpeechText.collectAsState()
     val spokenWord by viewModel.spokenWord.collectAsState()
@@ -225,7 +226,7 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
                     Text(
-                        text = "SANTIAGO",
+                        text = agentName,
                         color = Color(0xFF00E5FF),
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
