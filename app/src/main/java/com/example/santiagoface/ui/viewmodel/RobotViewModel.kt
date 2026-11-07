@@ -44,7 +44,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     private val _agentBaseUrl = MutableStateFlow(initialUrl)
     val agentBaseUrl: StateFlow<String> = _agentBaseUrl.asStateFlow()
 
-    private val _agentName = MutableStateFlow("SANTIAGO")
+    private val _agentName = MutableStateFlow("")
     val agentName: StateFlow<String> = _agentName.asStateFlow()
 
     // State Variables

@@ -464,7 +464,7 @@ class AgentRepository(
                     ?: throw Exception("Empty response body from agent name API")
 
                 val nameResponse = gson.fromJson(responseBody, AgentNameResponse::class.java)
-                nameResponse?.agentName ?: "SANTIAGO"
+                nameResponse?.agentName ?: ""
             }
         }
     }
