@@ -13,8 +13,8 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -32,11 +33,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicNone
+import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -66,6 +71,7 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
 
     val emotion by viewModel.emotion.collectAsState()
     val isListening by viewModel.isListening.collectAsState()
+    val isMicEnabled by viewModel.isMicEnabled.collectAsState()
     val isThinking by viewModel.isThinking.collectAsState()
     val isSpeaking by viewModel.isSpeaking.collectAsState()
     val showSettings by viewModel.showSettings.collectAsState()
@@ -102,11 +108,11 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
         }
         
         if (isAudioGranted) {
-            viewModel.startListening()
+            viewModel.enableMicrophone()
         }
     }
 
-    fun handleMicClick() {
+    fun handleEnableMicClick() {
         val hasAudio = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         val hasLoc = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
         
@@ -121,7 +127,7 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
         }
         
         if (hasAudio) {
-            viewModel.toggleListening()
+            viewModel.enableMicrophone()
         } else {
             val permissionsToRequest = mutableListOf(Manifest.permission.RECORD_AUDIO)
             if (!hasLoc) {
@@ -130,6 +136,10 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
             }
             permissionLauncher.launch(permissionsToRequest.toTypedArray())
         }
+    }
+
+    fun handleDisableMicClick() {
+        viewModel.disableMicrophone()
     }
 
     LaunchedEffect(Unit) {
@@ -257,17 +267,18 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
             }
         }
 
-        // 4. Bottom Mic Control Bar
-        Box(
+        // 4. Bottom Mic Control Bar (2 Buttons: Enable Microphone & Turn Off Microphone)
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .padding(bottom = 32.dp)
+                .padding(bottom = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Pulse animation when listening
+            // Animated visual feedback when recording/listening
             val infiniteTransition = rememberInfiniteTransition(label = "micPulse")
             val pulseScale by infiniteTransition.animateFloat(
                 initialValue = 1f,
-                targetValue = 1.35f,
+                targetValue = 1.25f,
                 animationSpec = infiniteRepeatable(
                     animation = tween(800, easing = FastOutSlowInEasing),
                     repeatMode = RepeatMode.Reverse
@@ -275,43 +286,52 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
                 label = "micPulseScale"
             )
 
-            if (isListening) {
-                Box(
-                    modifier = Modifier
-                        .size(76.dp)
-                        .scale(pulseScale)
-                        .clip(CircleShape)
-                        .background(Color(0xFF00E5FF).copy(alpha = 0.3f))
-                )
-            }
-
-            // Mic FAB Button
-            Box(
-                modifier = Modifier
-                    .size(72.dp)
-                    .clip(CircleShape)
-                    .background(
-                        brush = when {
-                            isListening -> Brush.radialGradient(listOf(Color(0xFF00E5FF), Color(0xFF00838F)))
-                            isThinking -> Brush.radialGradient(listOf(Color(0xFFFFD600), Color(0xFFF57F17)))
-                            isSpeaking -> Brush.radialGradient(listOf(Color(0xFF00E676), Color(0xFF1B5E20)))
-                            else -> Brush.radialGradient(listOf(Color(0xFF1E293B), Color(0xFF0F172A)))
-                        }
-                    )
-                    .border(
-                        width = 2.dp,
-                        color = if (isListening) Color(0xFF00E5FF) else Color(0xFF334155),
-                        shape = CircleShape
-                    )
-                    .clickable { handleMicClick() },
-                contentAlignment = Alignment.Center
+            // 2 Action Buttons: Enable Mic & Turn Off Mic
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = if (isListening) Icons.Default.Mic else Icons.Default.MicNone,
-                    contentDescription = "Microphone",
-                    tint = if (isListening) Color.Black else Color.White,
-                    modifier = Modifier.size(32.dp)
-                )
+                // Button 1: Enable Microphone (stays enabled until closed/turned off)
+                Button(
+                    onClick = { handleEnableMicClick() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isMicEnabled) Color(0xFF00E5FF) else Color(0xFF1E293B)
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                    border = BorderStroke(
+                        width = 2.dp,
+                        color = if (isMicEnabled) Color(0xFF00E5FF) else Color(0xFF00E5FF).copy(alpha = 0.5f)
+                    ),
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Mic,
+                        contentDescription = "Encender Micrófono",
+                        tint = if (isMicEnabled) Color.Black else Color(0xFF00E5FF),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+
+                // Button 2: Turn Off Microphone
+                Button(
+                    onClick = { handleDisableMicClick() },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (!isMicEnabled) Color(0xFFFF1744) else Color(0xFF1E293B)
+                    ),
+                    shape = RoundedCornerShape(24.dp),
+                    border = BorderStroke(
+                        width = 2.dp,
+                        color = if (!isMicEnabled) Color(0xFFFF1744) else Color(0xFFFF1744).copy(alpha = 0.5f)
+                    ),
+                    modifier = Modifier.height(48.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MicOff,
+                        contentDescription = "Apagar Micrófono",
+                        tint = if (!isMicEnabled) Color.White else Color(0xFFFF5252),
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
         }
 

@@ -46,6 +46,9 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     private val _lastAgentText = MutableStateFlow("")
     val lastAgentText: StateFlow<String> = _lastAgentText.asStateFlow()
 
+    private val _isMicEnabled = MutableStateFlow(false)
+    val isMicEnabled: StateFlow<Boolean> = _isMicEnabled.asStateFlow()
+
     val isListening: StateFlow<Boolean> = speechRecognizer.isListening
 
     private val _isThinking = MutableStateFlow(false)
@@ -118,16 +121,21 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
         _showTextInput.value = show
     }
 
-    fun toggleListening() {
-        if (ttsManager.isSpeaking.value) {
-            ttsManager.stop()
-            return
-        }
+    fun enableMicrophone() {
+        _isMicEnabled.value = true
+        startListening()
+    }
 
-        if (isListening.value) {
-            speechRecognizer.stopListening()
+    fun disableMicrophone() {
+        _isMicEnabled.value = false
+        speechRecognizer.stopListening()
+    }
+
+    fun toggleListening() {
+        if (_isMicEnabled.value) {
+            disableMicrophone()
         } else {
-            startListening()
+            enableMicrophone()
         }
     }
 
@@ -149,7 +157,14 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
                 )
             },
             onError = { errorMessage ->
-                // Logged by SpeechRecognizerManager
+                if (_isMicEnabled.value && !_isThinking.value && !ttsManager.isSpeaking.value) {
+                    viewModelScope.launch {
+                        kotlinx.coroutines.delay(1000)
+                        if (_isMicEnabled.value && !isListening.value && !_isThinking.value && !ttsManager.isSpeaking.value) {
+                            startListening()
+                        }
+                    }
+                }
             },
             overrideLocaleTag = _spanishLocale.value
         )
@@ -199,6 +214,14 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
                 _emotion.value = RobotEmotion.SAD
                 val errorMsg = "Error: ${error.message ?: "Failed to connect to agent"}"
                 _lastAgentText.value = errorMsg
+                if (_isMicEnabled.value) {
+                    viewModelScope.launch {
+                        kotlinx.coroutines.delay(1500)
+                        if (_isMicEnabled.value && !isListening.value && !_isThinking.value && !ttsManager.isSpeaking.value) {
+                            startListening()
+                        }
+                    }
+                }
             }
         }
     }
@@ -208,14 +231,25 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
             text = text,
             onStart = {},
             onDone = {
-                if (_autoListen.value) {
+                if (_isMicEnabled.value || _autoListen.value) {
                     viewModelScope.launch {
                         kotlinx.coroutines.delay(600)
-                        startListening()
+                        if (_isMicEnabled.value || _autoListen.value) {
+                            startListening()
+                        }
                     }
                 }
             },
-            onError = {}
+            onError = {
+                if (_isMicEnabled.value || _autoListen.value) {
+                    viewModelScope.launch {
+                        kotlinx.coroutines.delay(600)
+                        if (_isMicEnabled.value || _autoListen.value) {
+                            startListening()
+                        }
+                    }
+                }
+            }
         )
     }
 
