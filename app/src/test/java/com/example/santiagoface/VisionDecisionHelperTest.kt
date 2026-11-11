@@ -132,6 +132,21 @@ class VisionDecisionHelperTest {
             mlKitDetections = listOf(sampleBottleDetection)
         )
         assertTrue("Detailed scene explanation requires server reasoning", explainResult)
+
+        // 5. Visual scene queries like "¿Qué estás viendo?"
+        val seeingResult = VisionDecisionHelper.shouldSendBase64Image(
+            userMessage = "¿Qué estás viendo?",
+            isCameraActive = true,
+            mlKitDetections = listOf(sampleCupDetection)
+        )
+        assertTrue("Scene query '¿Qué estás viendo?' requires server multimodal vision", seeingResult)
+
+        val lookingResult = VisionDecisionHelper.shouldSendBase64Image(
+            userMessage = "What are you seeing?",
+            isCameraActive = true,
+            mlKitDetections = emptyList()
+        )
+        assertTrue("English scene query requires server multimodal vision", lookingResult)
     }
 
     @Test

@@ -7,25 +7,43 @@ object VisionDecisionHelper {
      */
     private val VISUAL_INTENT_KEYWORDS = listOf(
         // Spanish
-        "mira", "mirá", "mirar", "miren",
+        "mira", "mirá", "mirar", "miren", "miras", "mirás",
+        "viendo", "estás viendo", "estas viendo", "está viendo", "esta viendo",
+        "mirando", "estás mirando", "estas mirando",
         "qué ves", "que ves", "ves algo", "qué hay", "que hay",
+        "puedes ver", "logras ver", "llegas a ver",
         "describí", "describe", "describeme", "descríbeme",
         "qué es esto", "que es esto", "qué tengo", "que tengo",
+        "qué es eso", "que es eso", "qué es aquello", "que es aquello",
+        "qué hay enfrente", "que hay enfrente", "qué hay delante", "que hay delante",
+        "qué tienes enfrente", "que tienes enfrente", "qué tienes delante", "que tienes delante",
         "reconocé", "reconoce", "identificá", "identifica",
         "lee", "leé", "qué dice", "que dice",
-        "foto", "imagen", "observa", "cámara", "camara",
+        "foto", "imagen", "observa", "observas", "observá", "cámara", "camara",
         "dónde está", "donde esta", "busca", "buscá", "encuentra", "dónde dejé", "donde deje",
         // English
-        "look", "see", "what do you see", "what is this", "what am i holding",
-        "describe", "read this", "what does it say", "recognize", "identify",
+        "look", "looking", "looking at", "see", "seeing", "what do you see", "what are you seeing",
+        "what are you looking at", "what is this", "what is that", "what am i holding",
+        "what is in front of you", "what's in front of you", "can you see",
+        "describe", "describe what you see", "read this", "what does it say", "recognize", "identify",
         "picture", "photo", "camera", "image", "find", "where is", "do you see"
     )
 
     /**
      * Keywords and phrases that require deep comprehension and reasoning from the server's multimodal LLM
-     * (e.g. reading text, distinguishing brands, explaining relationships, recognizing facial identity, colors).
+     * (e.g. reading text, distinguishing brands, explaining relationships, recognizing facial identity, colors,
+     * or providing general visual scene descriptions).
      */
     private val DEEP_REASONING_PATTERNS = listOf(
+        // Visual scene queries / descriptions
+        "qué estás viendo", "que estas viendo", "qué estas viendo",
+        "qué estás mirando", "que estas mirando", "qué estas mirando",
+        "qué ves", "que ves", "dime qué ves", "dime que ves", "cuéntame qué ves", "cuentame que ves",
+        "qué hay enfrente", "que hay enfrente", "qué hay delante", "que hay delante",
+        "qué tienes enfrente", "que tienes enfrente", "qué tienes delante", "que tienes delante",
+        "describe lo que ves", "describí lo que ves", "describeme lo que ves", "descríbeme lo que ves",
+        "what do you see", "what are you seeing", "what are you looking at",
+        "what is in front of you", "what's in front of you", "describe what you see", "tell me what you see",
         // Reading text / OCR
         "lee", "leé", "qué dice", "que dice", "read", "what does it say", "what is written",
         // Specific attributes / brands / colors
