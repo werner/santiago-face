@@ -28,11 +28,10 @@ class CameraHelper(private val context: Context) {
     private val executor = Executors.newSingleThreadExecutor()
     private var cameraProvider: ProcessCameraProvider? = null
 
+    val mlKitHelper = MlKitVisionHelper()
+
     private val _isFrontCamera = MutableStateFlow(true)
     val isFrontCamera: StateFlow<Boolean> = _isFrontCamera.asStateFlow()
-
-    private val _latestFrameBase64 = MutableStateFlow<String?>(null)
-    val latestFrameBase64: StateFlow<String?> = _latestFrameBase64.asStateFlow()
 
     private val _cameraFovDeg = MutableStateFlow(60.0f)
     val cameraFovDeg: StateFlow<Float> = _cameraFovDeg.asStateFlow()
@@ -120,7 +119,15 @@ class CameraHelper(private val context: Context) {
             currentBitmap?.recycle()
             currentBitmap = null
         }
-        _latestFrameBase64.value = null
+        mlKitHelper.clear()
+    }
+
+    fun getCurrentBitmapCopy(): Bitmap? {
+        return synchronized(bitmapLock) {
+            currentBitmap?.takeIf { !it.isRecycled }?.let {
+                Bitmap.createBitmap(it)
+            }
+        }
     }
 
     private fun processImageFrame(imageProxy: ImageProxy) {
@@ -159,9 +166,9 @@ class CameraHelper(private val context: Context) {
                 currentBitmap = processedBitmap
             }
 
-            // Also keep latest Base64 cached for quick access
-            val base64 = bitmapToBase64(processedBitmap)
-            _latestFrameBase64.value = base64
+            // High-efficiency: Feed frame to on-device ML Kit analyzer (throttled).
+            // Do NOT encode Base64 here to avoid heavy CPU/GC overhead.
+            mlKitHelper.processBitmapThrottled(processedBitmap)
 
             if (processedBitmap != bitmap) {
                 bitmap.recycle()
@@ -174,19 +181,15 @@ class CameraHelper(private val context: Context) {
     }
 
     /**
-     * Captures a single current camera frame processed as Base64 JPEG (320x240 or 640x480, quality=80).
+     * Captures a single current camera frame processed as Base64 JPEG (320x240 or 640x480, quality=80)
+     * ON DEMAND only when explicitly requested.
      */
     fun getSingleFrameBase64(
         targetWidth: Int = 640,
         targetHeight: Int = 480,
         quality: Int = 80
     ): String? {
-        val bmpCopy = synchronized(bitmapLock) {
-            currentBitmap?.takeIf { !it.isRecycled }?.let {
-                Bitmap.createBitmap(it)
-            }
-        } ?: return _latestFrameBase64.value
-
+        val bmpCopy = getCurrentBitmapCopy() ?: return null
         val base64 = bitmapToBase64(bmpCopy, targetWidth, targetHeight, quality)
         bmpCopy.recycle()
         return base64

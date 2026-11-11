@@ -23,6 +23,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +59,14 @@ fun CameraPreviewCard(
         onDispose {
             // Camera stopped when user closes or destroys
         }
+    }
+
+    val detectedObjects by viewModel.detectedObjects.collectAsState()
+    val primaryObject = detectedObjects.firstOrNull()
+    val badgeText = if (primaryObject != null) {
+        "ML Kit: ${primaryObject.label} (${(primaryObject.confidence * 100).toInt()}%)"
+    } else {
+        "CAM (60° FOV)"
     }
 
     Surface(
@@ -120,11 +130,12 @@ fun CameraPreviewCard(
                     .padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
                 Text(
-                    text = "CAM (60° FOV)",
+                    text = badgeText,
                     color = Color(0xFF00E5FF),
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
                 )
             }
         }

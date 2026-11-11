@@ -17,6 +17,13 @@ data class AgentNameResponse(
     val agentName: String? = null
 )
 
+data class MlKitDetectionDto(
+    val label: String,
+    val confidence: Float,
+    @SerializedName("bounding_box")
+    val boundingBox: BoundingBoxDto? = null
+)
+
 data class AgentRequest(
     val message: String,
     @SerializedName("audio_information")
@@ -36,7 +43,13 @@ data class AgentRequest(
     @SerializedName("camera_fov_deg")
     val cameraFovDeg: Float? = null,        // e.g. 62.5f
     @SerializedName("auto_act")
-    val autoAct: Boolean? = null
+    val autoAct: Boolean? = null,
+    @SerializedName("visual_context")
+    val visualContext: String? = null,
+    @SerializedName("detected_objects")
+    val detectedObjects: List<String>? = null,
+    @SerializedName("mlkit_detections")
+    val mlKitDetections: List<MlKitDetectionDto>? = null
 )
 
 data class BoundingBoxDto(
@@ -127,7 +140,9 @@ data class AgentResponse(
     @SerializedName("visual_matches")
     val visualMatches: List<VisualMatchDto>? = null,
     @SerializedName("vision_analysis")
-    val visionAnalysis: VisionAnalysisDto? = null
+    val visionAnalysis: VisionAnalysisDto? = null,
+    @SerializedName("request_image")
+    val requestImage: Boolean? = null
 )
 
 data class VisionActRequest(
@@ -146,7 +161,13 @@ data class VisionActRequest(
     @SerializedName("camera_fov_deg")
     val cameraFovDeg: Float? = null,
     @SerializedName("execute_hardware")
-    val executeHardware: Boolean? = true
+    val executeHardware: Boolean? = true,
+    @SerializedName("detected_objects")
+    val detectedObjects: List<String>? = null,
+    @SerializedName("mlkit_detections")
+    val mlKitDetections: List<MlKitDetectionDto>? = null,
+    @SerializedName("target_detected_locally")
+    val targetDetectedLocally: Boolean? = null
 )
 
 data class VisionActResponse(
@@ -254,7 +275,7 @@ class AgentRepository(
     }
 
     /**
-     * Sends a message along with optional audio info, voice features, sounds, images, and vision targets to the Santiago Agent.
+     * Sends a message along with optional audio info, voice features, sounds, images, ML Kit detections, and vision targets to the Santiago Agent.
      */
     suspend fun sendMessage(
         baseUrl: String,
@@ -269,7 +290,10 @@ class AgentRepository(
         referenceSizeCm: Float? = null,
         targetDistanceCm: Float? = null,
         cameraFovDeg: Float? = null,
-        autoAct: Boolean? = null
+        autoAct: Boolean? = null,
+        visualContext: String? = null,
+        detectedObjects: List<String>? = null,
+        mlKitDetections: List<MlKitDetectionDto>? = null
     ): Result<AgentResponse> = withContext(Dispatchers.IO) {
         runCatching {
             val cleanUrl = cleanBaseUrl(baseUrl)
@@ -288,7 +312,10 @@ class AgentRepository(
                     referenceSizeCm = referenceSizeCm,
                     targetDistanceCm = targetDistanceCm,
                     cameraFovDeg = cameraFovDeg,
-                    autoAct = autoAct
+                    autoAct = autoAct,
+                    visualContext = visualContext,
+                    detectedObjects = detectedObjects,
+                    mlKitDetections = mlKitDetections
                 )
             )
             val request = Request.Builder()
@@ -326,7 +353,10 @@ class AgentRepository(
         referenceSizeCm: Float? = null,
         targetDistanceCm: Float? = null,
         cameraFovDeg: Float? = null,
-        executeHardware: Boolean? = true
+        executeHardware: Boolean? = true,
+        detectedObjects: List<String>? = null,
+        mlKitDetections: List<MlKitDetectionDto>? = null,
+        targetDetectedLocally: Boolean? = null
     ): Result<VisionActResponse> = withContext(Dispatchers.IO) {
         runCatching {
             val cleanUrl = cleanBaseUrl(baseUrl)
@@ -343,7 +373,10 @@ class AgentRepository(
                     referenceSizeCm = referenceSizeCm,
                     targetDistanceCm = targetDistanceCm,
                     cameraFovDeg = cameraFovDeg,
-                    executeHardware = executeHardware
+                    executeHardware = executeHardware,
+                    detectedObjects = detectedObjects,
+                    mlKitDetections = mlKitDetections,
+                    targetDetectedLocally = targetDetectedLocally
                 )
             )
             val request = Request.Builder()

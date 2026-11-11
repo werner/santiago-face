@@ -7,7 +7,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.viewModelScope
 import com.example.santiagoface.camera.CameraHelper
+import com.example.santiagoface.camera.DetectedObject
+import com.example.santiagoface.camera.VisionDecisionHelper
 import com.example.santiagoface.data.AgentRepository
+import com.example.santiagoface.data.MlKitDetectionDto
 import com.example.santiagoface.data.VisionAnalysisDto
 import com.example.santiagoface.data.VisualMatchDto
 import com.example.santiagoface.speech.SpeechRecognizerManager
@@ -97,6 +100,10 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     val isCameraActive: StateFlow<Boolean> = cameraHelper.isCameraActive
     val cameraFovDeg: StateFlow<Float> = cameraHelper.cameraFovDeg
     val isFrontCamera: StateFlow<Boolean> = cameraHelper.isFrontCamera
+    val detectedObjects: StateFlow<List<DetectedObject>> = cameraHelper.mlKitHelper.detectedObjects
+
+    private val _serverRequestedImage = MutableStateFlow(false)
+    val serverRequestedImage: StateFlow<Boolean> = _serverRequestedImage.asStateFlow()
 
     private val _lastVisionAnalysis = MutableStateFlow<VisionAnalysisDto?>(null)
     val lastVisionAnalysis: StateFlow<VisionAnalysisDto?> = _lastVisionAnalysis.asStateFlow()
@@ -256,24 +263,50 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
         _isThinking.value = true
 
         viewModelScope.launch {
-            // Check if camera is active to attach current frames and FOV
+            val isCamActive = cameraHelper.isCameraActive.value
+            val currentDetections = if (isCamActive) cameraHelper.mlKitHelper.detectedObjects.value else emptyList()
+            val goal = overrideGoal ?: _activeGoal.value
+            val target = overrideTarget ?: _activeTarget.value
+
+            // Efficient decision: Check if server comprehension/reasoning or explicit request requires sending Base64 images
+            val shouldSendImage = VisionDecisionHelper.shouldSendBase64Image(
+                userMessage = trimmed,
+                isCameraActive = isCamActive,
+                mlKitDetections = currentDetections,
+                target = target,
+                serverExplicitlyRequestedImage = _serverRequestedImage.value
+            )
+            // Reset requested image flag after checking
+            _serverRequestedImage.value = false
+
             var imagePayload: String? = null
             var imagesPayload: List<String>? = null
             var fovPayload: Float? = null
+            var visualContextPayload: String? = null
+            var detectedObjectsPayload: List<String>? = null
+            var mlKitDetectionsPayload: List<MlKitDetectionDto>? = null
 
-            if (cameraHelper.isCameraActive.value) {
+            if (isCamActive) {
                 fovPayload = cameraHelper.cameraFovDeg.value
-                // Capture 2 sequential frames ~300ms apart for closing_rate computation
-                val frames = cameraHelper.getSequentialFramesBase64(300L, 640, 480, 80)
-                if (frames.size >= 2) {
-                    imagesPayload = frames
-                } else if (frames.isNotEmpty()) {
-                    imagePayload = frames[0]
+
+                // Always attach lightweight on-device ML Kit detection metadata when available
+                if (currentDetections.isNotEmpty()) {
+                    val summary = cameraHelper.mlKitHelper.getSummaryString()
+                    visualContextPayload = if (summary.isNotBlank()) "MLKit: $summary" else null
+                    detectedObjectsPayload = currentDetections.map { "${it.label} (${(it.confidence * 100).toInt()}%)" }
+                    mlKitDetectionsPayload = currentDetections.map { it.toDto() }
+                }
+
+                if (shouldSendImage) {
+                    // Deep comprehension or visual inspection requested: capture 2 sequential frames ~300ms apart
+                    val frames = cameraHelper.getSequentialFramesBase64(300L, 640, 480, 80)
+                    if (frames.size >= 2) {
+                        imagesPayload = frames
+                    } else if (frames.isNotEmpty()) {
+                        imagePayload = frames[0]
+                    }
                 }
             }
-
-            val goal = overrideGoal ?: _activeGoal.value
-            val target = overrideTarget ?: _activeTarget.value
 
             val result = agentRepository.sendMessage(
                 baseUrl = _agentBaseUrl.value,
@@ -288,7 +321,10 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
                 referenceSizeCm = referenceSizeCm,
                 targetDistanceCm = targetDistanceCm,
                 cameraFovDeg = fovPayload,
-                autoAct = autoAct
+                autoAct = autoAct,
+                visualContext = visualContextPayload,
+                detectedObjects = detectedObjectsPayload,
+                mlKitDetections = mlKitDetectionsPayload
             )
             _isThinking.value = false
 
@@ -298,6 +334,11 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
                 _lastVisionAnalysis.value = response.visionAnalysis
                 _lastVisualMatches.value = response.visualMatches
+
+                // If agent response requests an image or needs a visual verification
+                if (response.requestImage == true) {
+                    _serverRequestedImage.value = true
+                }
 
                 val replyText = response.text?.trim().orEmpty()
                 _lastAgentText.value = replyText
@@ -337,6 +378,8 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Starts the fast autonomous visual control loop (calling POST /api/vision/act every loopIntervalMs).
+     * Efficient mode: Uses local ML Kit detection when target is found; only transmits Base64 image
+     * when ML Kit cannot find the target or server reasoning is needed.
      */
     fun startContinuousVisionLoop(
         goal: String = "approach",
@@ -355,8 +398,13 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
         visionLoopJob = viewModelScope.launch {
             while (_isContinuousVisionLoopActive.value) {
-                val frame = cameraHelper.getSingleFrameBase64(640, 480, 80)
                 val fov = cameraFovDeg ?: cameraHelper.cameraFovDeg.value
+                val currentDetections = cameraHelper.mlKitHelper.detectedObjects.value
+                val localTargetMatch = target?.let { cameraHelper.mlKitHelper.findTarget(it, 0.50f) }
+
+                // High efficiency: if ML Kit already tracks target on-device, omit heavy Base64 image
+                val needsServerImage = (localTargetMatch == null)
+                val frame = if (needsServerImage) cameraHelper.getSingleFrameBase64(640, 480, 80) else null
 
                 val actResult = agentRepository.sendVisionAct(
                     baseUrl = _agentBaseUrl.value,
@@ -368,7 +416,10 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
                     referenceSizeCm = referenceSizeCm,
                     targetDistanceCm = targetDistanceCm,
                     cameraFovDeg = fov,
-                    executeHardware = true
+                    executeHardware = true,
+                    detectedObjects = currentDetections.map { "${it.label} (${(it.confidence * 100).toInt()}%)" },
+                    mlKitDetections = currentDetections.map { it.toDto() },
+                    targetDetectedLocally = (localTargetMatch != null)
                 )
 
                 actResult.onSuccess { response ->
