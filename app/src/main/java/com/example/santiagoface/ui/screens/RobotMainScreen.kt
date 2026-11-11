@@ -73,6 +73,7 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
     val isListening by viewModel.isListening.collectAsState()
     val isMicEnabled by viewModel.isMicEnabled.collectAsState()
     val isThinking by viewModel.isThinking.collectAsState()
+    val speculativeThought by viewModel.speculativeThought.collectAsState()
     val isSpeaking by viewModel.isSpeaking.collectAsState()
     val showSettings by viewModel.showSettings.collectAsState()
     val showTextInput by viewModel.showTextInput.collectAsState()
@@ -291,6 +292,30 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
                 .padding(bottom = 120.dp, start = 24.dp, end = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Display Real-time Speculative Thought / Status
+            AnimatedVisibility(
+                visible = isThinking && !speculativeThought.isNullOrBlank(),
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF141E2E).copy(alpha = 0.90f)),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, Color(0xFF00E5FF).copy(alpha = 0.6f)),
+                    modifier = Modifier.padding(bottom = 12.dp)
+                ) {
+                    Text(
+                        text = "⚡ ${speculativeThought.orEmpty()}",
+                        color = Color(0xFF00E5FF),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
             // Display User Speech / Partial Transcription
             AnimatedVisibility(
                 visible = isListening && partialSpeechText.isNotEmpty(),

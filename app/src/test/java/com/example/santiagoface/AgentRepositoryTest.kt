@@ -62,4 +62,14 @@ class AgentRepositoryTest {
         assertTrue(json.contains("\"mlkit_detections\""))
         assertTrue(json.contains("\"label\":\"Cup\""))
     }
+
+    @Test
+    fun speculativeEventDto_deserializesCorrectly() {
+        val json = """{"status":"observing","emotion":"curious","message":"Detectado en cámara: Cup (92%) — Analizando..."}"""
+        val gson = Gson()
+        val spec = gson.fromJson(json, com.example.santiagoface.data.SpeculativeEventDto::class.java)
+        assertEquals("observing", spec.status)
+        assertEquals("curious", spec.emotion)
+        assertEquals("Detectado en cámara: Cup (92%) — Analizando...", spec.message)
+    }
 }

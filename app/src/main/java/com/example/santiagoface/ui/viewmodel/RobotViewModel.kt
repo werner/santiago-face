@@ -68,6 +68,9 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     private val _isThinking = MutableStateFlow(false)
     val isThinking: StateFlow<Boolean> = _isThinking.asStateFlow()
 
+    private val _speculativeThought = MutableStateFlow<String?>(null)
+    val speculativeThought: StateFlow<String?> = _speculativeThought.asStateFlow()
+
     val isSpeaking: StateFlow<Boolean> = ttsManager.isSpeaking
     val spokenWord: StateFlow<String> = ttsManager.currentSpokenWord
     val mouthOpening: StateFlow<Float> = ttsManager.mouthOpening
@@ -261,6 +264,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
         _lastUserText.value = trimmed.ifEmpty { "[Input con Cámara/Audio]" }
         _isThinking.value = true
+        _speculativeThought.value = null
 
         viewModelScope.launch {
             val isCamActive = cameraHelper.isCameraActive.value
@@ -308,7 +312,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
 
-            val result = agentRepository.sendMessage(
+            val result = agentRepository.sendMessageStream(
                 baseUrl = _agentBaseUrl.value,
                 userMessage = trimmed,
                 audioInformation = audioInformation,
@@ -324,9 +328,15 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
                 autoAct = autoAct,
                 visualContext = visualContextPayload,
                 detectedObjects = detectedObjectsPayload,
-                mlKitDetections = mlKitDetectionsPayload
+                mlKitDetections = mlKitDetectionsPayload,
+                onSpeculative = { spec ->
+                    val parsedEmotion = RobotEmotion.fromString(spec.emotion)
+                    _emotion.value = parsedEmotion
+                    _speculativeThought.value = spec.message
+                }
             )
             _isThinking.value = false
+            _speculativeThought.value = null
 
             result.onSuccess { response ->
                 val parsedEmotion = RobotEmotion.fromString(response.emotion)

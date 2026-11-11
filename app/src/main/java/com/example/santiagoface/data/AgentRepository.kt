@@ -17,6 +17,12 @@ data class AgentNameResponse(
     val agentName: String? = null
 )
 
+data class SpeculativeEventDto(
+    val status: String? = "thinking",
+    val emotion: String? = "neutral",
+    val message: String? = "Pensando..."
+)
+
 data class MlKitDetectionDto(
     val label: String,
     val confidence: Float,
@@ -336,6 +342,122 @@ class AgentRepository(
                 val agentResponse = gson.fromJson(responseBody, AgentResponse::class.java)
                 agentResponse ?: AgentResponse(emotion = "neutral", text = "Sorry, I received an empty response.")
             }
+        }
+    }
+
+    /**
+     * Sends a message via Server-Sent Events (/api/message/stream) to receive real-time speculative thoughts/emotions
+     * immediately while the LLM generates the complete final answer.
+     */
+    suspend fun sendMessageStream(
+        baseUrl: String,
+        userMessage: String,
+        audioInformation: String? = null,
+        voiceFeatures: String? = null,
+        sounds: String? = null,
+        image: String? = null,
+        images: List<String>? = null,
+        goal: String? = null,
+        target: String? = null,
+        referenceSizeCm: Float? = null,
+        targetDistanceCm: Float? = null,
+        cameraFovDeg: Float? = null,
+        autoAct: Boolean? = null,
+        visualContext: String? = null,
+        detectedObjects: List<String>? = null,
+        mlKitDetections: List<MlKitDetectionDto>? = null,
+        onSpeculative: ((SpeculativeEventDto) -> Unit)? = null
+    ): Result<AgentResponse> = withContext(Dispatchers.IO) {
+        runCatching {
+            val cleanUrl = cleanBaseUrl(baseUrl)
+            val url = "$cleanUrl/api/message/stream"
+
+            val jsonBody = gson.toJson(
+                AgentRequest(
+                    message = userMessage,
+                    audioInformation = audioInformation,
+                    voiceFeatures = voiceFeatures,
+                    sounds = sounds,
+                    image = image,
+                    images = images,
+                    goal = goal,
+                    target = target,
+                    referenceSizeCm = referenceSizeCm,
+                    targetDistanceCm = targetDistanceCm,
+                    cameraFovDeg = cameraFovDeg,
+                    autoAct = autoAct,
+                    visualContext = visualContext,
+                    detectedObjects = detectedObjects,
+                    mlKitDetections = mlKitDetections
+                )
+            )
+            val request = Request.Builder()
+                .url(url)
+                .applyApiKey()
+                .addHeader("Accept", "text/event-stream")
+                .post(jsonBody.toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    val errorBody = response.body?.string() ?: ""
+                    throw Exception("Agent returned error HTTP ${response.code}: $errorBody")
+                }
+
+                val source = response.body?.source() ?: throw Exception("Empty response body from stream")
+                var currentEvent: String? = null
+                var finalResponse: AgentResponse? = null
+                var errorEventJson: String? = null
+
+                while (!source.exhausted()) {
+                    val line = source.readUtf8Line() ?: break
+                    if (line.startsWith("event:")) {
+                        currentEvent = line.substringAfter("event:").trim()
+                    } else if (line.startsWith("data:")) {
+                        val data = line.substringAfter("data:").trim()
+                        when (currentEvent) {
+                            "speculative" -> {
+                                try {
+                                    val spec = gson.fromJson(data, SpeculativeEventDto::class.java)
+                                    if (spec != null) {
+                                        onSpeculative?.invoke(spec)
+                                    }
+                                } catch (_: Exception) {}
+                            }
+                            "response" -> {
+                                finalResponse = gson.fromJson(data, AgentResponse::class.java)
+                            }
+                            "error" -> {
+                                errorEventJson = data
+                            }
+                        }
+                    }
+                }
+
+                finalResponse ?: errorEventJson?.let {
+                    throw Exception("Agent stream error: $it")
+                } ?: throw Exception("Stream finished without final response")
+            }
+        }.recoverCatching {
+            // Seamless fallback to unary POST /api/message if streaming fails or is interrupted
+            sendMessage(
+                baseUrl = baseUrl,
+                userMessage = userMessage,
+                audioInformation = audioInformation,
+                voiceFeatures = voiceFeatures,
+                sounds = sounds,
+                image = image,
+                images = images,
+                goal = goal,
+                target = target,
+                referenceSizeCm = referenceSizeCm,
+                targetDistanceCm = targetDistanceCm,
+                cameraFovDeg = cameraFovDeg,
+                autoAct = autoAct,
+                visualContext = visualContext,
+                detectedObjects = detectedObjects,
+                mlKitDetections = mlKitDetections
+            ).getOrThrow()
         }
     }
 
