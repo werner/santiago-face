@@ -164,4 +164,128 @@ class VisionDecisionHelperTest {
         assertEquals("bottle", VisionDecisionHelper.extractTargetCandidate("Do you see the bottle?"))
         assertEquals("celular", VisionDecisionHelper.extractTargetCandidate("Dónde está el celular"))
     }
+
+    @Test
+    fun supportsDiverseSpanishDialectsWorldwide() {
+        // Rioplatense / Argentine & Uruguayan
+        assertTrue(
+            "Argentine scene query",
+            VisionDecisionHelper.shouldSendBase64Image("Che, fijate qué hay enfrente", true, emptyList())
+        )
+        assertTrue(
+            "Argentine scene query with voseo",
+            VisionDecisionHelper.shouldSendBase64Image("¿Qué tenés adelante?", true, emptyList())
+        )
+        assertTrue(
+            "Argentine visual intent",
+            VisionDecisionHelper.hasVisualIntent("Mirá un toque esto")
+        )
+
+        // Mexican & Central American
+        assertTrue(
+            "Mexican slang 'wacha'",
+            VisionDecisionHelper.shouldSendBase64Image("Wacha qué hay enfrente", true, emptyList())
+        )
+        assertTrue(
+            "Mexican slang 'checa'",
+            VisionDecisionHelper.hasVisualIntent("Checa esto, carnal")
+        )
+        assertTrue(
+            "Mexican idiom 'échale un ojo'",
+            VisionDecisionHelper.hasVisualIntent("Échale un ojo a lo que tengo")
+        )
+
+        // Colombian & Andean
+        assertTrue(
+            "Colombian slang 'pillá'",
+            VisionDecisionHelper.shouldSendBase64Image("Pillá qué tengo acá", true, emptyList())
+        )
+        assertTrue(
+            "Colombian visual scene query",
+            VisionDecisionHelper.shouldSendBase64Image("¿Qué pillas ahí adelante, parce?", true, emptyList())
+        )
+
+        // Chilean
+        assertTrue(
+            "Chilean slang 'cachái'",
+            VisionDecisionHelper.shouldSendBase64Image("¿Cachái qué hay acá po?", true, emptyList())
+        )
+        assertTrue(
+            "Chilean visual intent 'cacha'",
+            VisionDecisionHelper.hasVisualIntent("Cacha qué tengo aquí")
+        )
+
+        // Peninsular Spanish (Spain)
+        assertTrue(
+            "Peninsular OCR 'qué pone'",
+            VisionDecisionHelper.shouldSendBase64Image("¿Qué pone en este papel?", true, emptyList())
+        )
+        assertTrue(
+            "Peninsular idiom 'échale un vistazo'",
+            VisionDecisionHelper.hasVisualIntent("Échale un vistazo a esto")
+        )
+    }
+
+    @Test
+    fun supportsDiverseEnglishDialectsWorldwide() {
+        // British & Commonwealth
+        assertTrue(
+            "British 'take a gander'",
+            VisionDecisionHelper.shouldSendBase64Image("Take a gander at what's in front of you", true, emptyList())
+        )
+        assertTrue(
+            "Commonwealth 'have a squint'",
+            VisionDecisionHelper.shouldSendBase64Image("Have a squint at what I'm holding", true, emptyList())
+        )
+        assertTrue(
+            "British OCR reading inquiry",
+            VisionDecisionHelper.shouldSendBase64Image("What does that sign say, mate?", true, emptyList())
+        )
+
+        // American & Canadian
+        assertTrue(
+            "American scene inquiry",
+            VisionDecisionHelper.shouldSendBase64Image("What's in front of you?", true, emptyList())
+        )
+        assertTrue(
+            "American visual intent",
+            VisionDecisionHelper.hasVisualIntent("Check this out")
+        )
+
+        // Australian
+        assertTrue(
+            "Australian 'look-see'",
+            VisionDecisionHelper.hasVisualIntent("Have a look-see over here")
+        )
+    }
+
+    @Test
+    fun dialectalTargetExtractionAndSynonymMatching() {
+        // Slang & dialectal targets
+        assertEquals("chela", VisionDecisionHelper.extractTargetCandidate("¿Wachas una chela?"))
+        assertEquals("taza", VisionDecisionHelper.extractTargetCandidate("¿Cachái la taza po?"))
+        assertEquals("celular", VisionDecisionHelper.extractTargetCandidate("¿Pillás el celular, parce?"))
+        assertEquals("mug", VisionDecisionHelper.extractTargetCandidate("Can you spot the mug?"))
+        assertEquals("gafas", VisionDecisionHelper.extractTargetCandidate("¿Dónde están las gafas?"))
+
+        // Multi-dialect synonyms
+        assertTrue("Mexican 'chela' matches beer", VisionDecisionHelper.isMatch("Beer", "chela"))
+        assertTrue("Spain 'móvil' matches cell phone", VisionDecisionHelper.isMatch("Cell phone", "móvil"))
+        assertTrue("Spain 'gafas' matches glasses", VisionDecisionHelper.isMatch("Glasses", "gafas"))
+        assertTrue("Latin America 'lentes' matches sunglasses", VisionDecisionHelper.isMatch("Sunglasses", "lentes"))
+        assertTrue("Rioplatense 'birra' matches cerveza", VisionDecisionHelper.isMatch("Cerveza", "birra"))
+        assertTrue("Latin America 'compu' matches laptop", VisionDecisionHelper.isMatch("Laptop", "compu"))
+        assertTrue("English 'mug' matches cup", VisionDecisionHelper.isMatch("Cup", "mug"))
+    }
+
+    @Test
+    fun nonVisualQuestionsAcrossDialectsDoNotTriggerImages() {
+        // Conversational phrases without visual intent
+        assertFalse(VisionDecisionHelper.shouldSendBase64Image("¿De dónde eres?", true, emptyList()))
+        assertFalse(VisionDecisionHelper.shouldSendBase64Image("Where are you from?", true, emptyList()))
+        assertFalse(VisionDecisionHelper.shouldSendBase64Image("Tell me a story", true, emptyList()))
+        assertFalse(VisionDecisionHelper.shouldSendBase64Image("Good morning Santiago", true, emptyList()))
+        assertFalse(VisionDecisionHelper.shouldSendBase64Image("¿Cuál es la capital de Francia?", true, emptyList()))
+        assertFalse(VisionDecisionHelper.shouldSendBase64Image("Muchas gracias por tu ayuda", true, emptyList()))
+    }
 }
