@@ -24,6 +24,7 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
     val mouthOpening: StateFlow<Float> = _mouthOpening.asStateFlow()
 
     private var currentTextToSpeak: String = ""
+    private val networkFallbackPolicy = NetworkFallbackPolicy()
 
     private var onStartCallback: (() -> Unit)? = null
     private var onDoneCallback: (() -> Unit)? = null
@@ -45,7 +46,10 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
         }
     }
 
-    private fun configureLanguageAndVoiceForText(text: String) {
+    private fun configureLanguageAndVoiceForText(
+        text: String,
+        forceOffline: Boolean = networkFallbackPolicy.useOfflineFallback
+    ) {
         if (tts == null) return
 
         val isSpanish = isSpanishText(text)
@@ -78,7 +82,8 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
                 val bestVoice = voices.asSequence()
                     .filter { voice ->
                         voice.locale.language == targetLang &&
-                        !voice.features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED)
+                        !voice.features.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) &&
+                        (!forceOffline || !voice.isNetworkConnectionRequired)
                     }
                     .sortedWith(
                         compareByDescending<android.speech.tts.Voice> { it.quality }
@@ -88,7 +93,7 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
 
                 if (bestVoice != null) {
                     tts?.voice = bestVoice
-                    Log.d("TtsManager", "Selected native voice: ${bestVoice.name} for language ${targetLocale.language}")
+                    Log.d("TtsManager", "Selected native voice: ${bestVoice.name} (offline=${!bestVoice.isNetworkConnectionRequired}) for language ${targetLocale.language}")
                 }
             }
         } catch (e: Exception) {
@@ -107,6 +112,7 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
             }
 
             override fun onDone(utteranceId: String?) {
+                networkFallbackPolicy.onSuccess()
                 _isSpeaking.value = false
                 _mouthOpening.value = 0f
                 _currentSpokenWord.value = ""
@@ -122,6 +128,26 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
             }
 
             override fun onError(utteranceId: String?, errorCode: Int) {
+                val isNetworkError =
+                    errorCode == TextToSpeech.ERROR_NETWORK || errorCode == TextToSpeech.ERROR_NETWORK_TIMEOUT
+
+                if (currentTextToSpeak.isNotEmpty()) {
+                    when (networkFallbackPolicy.onError(isNetworkError)) {
+                        NetworkFallbackPolicy.FailureAction.RETRY_ONLINE -> {
+                            Log.w("TtsManager", "TTS network error ($errorCode); retrying online.")
+                            enqueueCurrentUtterance()
+                            return
+                        }
+                        NetworkFallbackPolicy.FailureAction.SWITCH_TO_OFFLINE -> {
+                            Log.w("TtsManager", "TTS network error ($errorCode) persisted; switching to local offline voice.")
+                            configureLanguageAndVoiceForText(currentTextToSpeak, forceOffline = true)
+                            enqueueCurrentUtterance()
+                            return
+                        }
+                        NetworkFallbackPolicy.FailureAction.REPORT_ERROR -> Unit
+                    }
+                }
+
                 _isSpeaking.value = false
                 _mouthOpening.value = 0f
                 _currentSpokenWord.value = ""
@@ -176,6 +202,7 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
             return
         }
 
+        networkFallbackPolicy.refreshForNewOperation()
         configureLanguageAndVoiceForText(text)
 
         currentTextToSpeak = text
@@ -185,6 +212,13 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
         this.onStartCallback = onStart
         this.onDoneCallback = onDone
         this.onErrorCallback = onError
+
+        enqueueCurrentUtterance()
+    }
+
+    private fun enqueueCurrentUtterance() {
+        val text = currentTextToSpeak
+        if (text.isEmpty() || tts == null) return
 
         val utteranceId = "Santiago_Utterance_${System.currentTimeMillis()}"
         val params = HashMap<String, String>()
@@ -197,7 +231,7 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
             _isSpeaking.value = false
             _mouthOpening.value = 0f
             _currentSpokenWord.value = ""
-            onError?.invoke("Failed to enqueue TTS speech")
+            onErrorCallback?.invoke("Failed to enqueue TTS speech")
         }
     }
 
@@ -211,6 +245,7 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
     }
 
     fun shutdown() {
+        networkFallbackPolicy.reset()
         if (isInitialized) {
             tts?.stop()
             tts?.shutdown()

@@ -32,6 +32,9 @@ class SpeechRecognizerManager(private val context: Context) {
 
     private var preferredSpanishLocaleTag: String = "es-ES"
     private var needsReinitialization: Boolean = false
+    private var lastOverrideLocaleTag: String? = null
+    private var isUsingOnDeviceRecognizer: Boolean = false
+    private val networkFallbackPolicy = NetworkFallbackPolicy()
 
     init {
         initRecognizer()
@@ -41,20 +44,27 @@ class SpeechRecognizerManager(private val context: Context) {
         preferredSpanishLocaleTag = if (localeTag.isNotBlank()) localeTag else "es-ES"
     }
 
-    private fun initRecognizer() {
+    private fun initRecognizer(useOnDevice: Boolean = networkFallbackPolicy.useOfflineFallback) {
         destroyRecognizerQuietly()
 
         val appContext = context.applicationContext
-        if (!SpeechRecognizer.isRecognitionAvailable(appContext)) {
-            Log.e("SpeechRecognizer", "Speech recognition is not available on this device.")
-            return
-        }
-
         try {
-            speechRecognizer = SpeechRecognizer.createSpeechRecognizer(appContext)
+            if (useOnDevice && SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)) {
+                speechRecognizer = SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
+                isUsingOnDeviceRecognizer = true
+                Log.i("SpeechRecognizer", "Initialized on-device speech recognizer.")
+            } else {
+                if (!SpeechRecognizer.isRecognitionAvailable(appContext)) {
+                    Log.e("SpeechRecognizer", "Speech recognition is not available on this device.")
+                    return
+                }
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(appContext)
+                isUsingOnDeviceRecognizer = false
+            }
         } catch (e: Exception) {
             Log.e("SpeechRecognizer", "Failed to create speech recognizer: ${e.message}")
             speechRecognizer = null
+            isUsingOnDeviceRecognizer = false
             return
         }
 
@@ -90,6 +100,26 @@ class SpeechRecognizerManager(private val context: Context) {
                 val errorMessage = getErrorMessage(error)
                 Log.e("SpeechRecognizer", "Error code $error: $errorMessage")
 
+                val isNetworkError =
+                    error == SpeechRecognizer.ERROR_NETWORK || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT
+
+                when (networkFallbackPolicy.onError(isNetworkError)) {
+                    NetworkFallbackPolicy.FailureAction.RETRY_ONLINE -> {
+                        Log.w("SpeechRecognizer", "Network error ($error); retrying online recognition.")
+                        startListeningInternal()
+                        return
+                    }
+                    NetworkFallbackPolicy.FailureAction.SWITCH_TO_OFFLINE -> {
+                        Log.w("SpeechRecognizer", "Network error ($error) persisted; switching to on-device recognition.")
+                        initRecognizer(useOnDevice = true)
+                        if (speechRecognizer != null) {
+                            startListeningInternal()
+                            return
+                        }
+                    }
+                    NetworkFallbackPolicy.FailureAction.REPORT_ERROR -> Unit
+                }
+
                 if (error == SpeechRecognizer.ERROR_CLIENT || error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
                     needsReinitialization = true
                 }
@@ -104,6 +134,7 @@ class SpeechRecognizerManager(private val context: Context) {
             override fun onResults(results: Bundle?) {
                 _isListening.value = false
                 _audioLevel.value = 0f
+                networkFallbackPolicy.onSuccess()
                 val audioAnalysis = audioFeatureExtractor.stopAndAnalyze()
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                 if (!matches.isNullOrEmpty()) {
@@ -138,21 +169,28 @@ class SpeechRecognizerManager(private val context: Context) {
         onError: (String) -> Unit,
         overrideLocaleTag: String? = null
     ) {
-        if (speechRecognizer == null || needsReinitialization) {
-            initRecognizer()
-        }
-
-        if (speechRecognizer == null) {
-            onError("Speech recognition not supported on this device")
-            return
-        }
-
         this.onResultWithAudioListener = onResult
         this.onResultListener = null
         this.onErrorListener = onError
+        this.lastOverrideLocaleTag = overrideLocaleTag
+
+        networkFallbackPolicy.refreshForNewOperation()
+        startListeningInternal()
+    }
+
+    private fun startListeningInternal() {
+        val shouldUseOnDevice = networkFallbackPolicy.useOfflineFallback
+        if (speechRecognizer == null || needsReinitialization || isUsingOnDeviceRecognizer != shouldUseOnDevice) {
+            initRecognizer(useOnDevice = shouldUseOnDevice)
+        }
+
+        if (speechRecognizer == null) {
+            onErrorListener?.invoke("Speech recognition not supported on this device")
+            return
+        }
 
         val languageTag = when {
-            !overrideLocaleTag.isNullOrBlank() -> overrideLocaleTag
+            !lastOverrideLocaleTag.isNullOrBlank() -> lastOverrideLocaleTag!!
             preferredSpanishLocaleTag.isNotBlank() -> preferredSpanishLocaleTag
             Locale.getDefault().language == "es" -> Locale.getDefault().toString()
             else -> "es-ES"
@@ -166,6 +204,9 @@ class SpeechRecognizerManager(private val context: Context) {
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 3000L)
             putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 2000L)
+            if (shouldUseOnDevice) {
+                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+            }
         }
 
         try {
@@ -177,14 +218,14 @@ class SpeechRecognizerManager(private val context: Context) {
             _isListening.value = false
             audioFeatureExtractor.stop()
             Log.e("SpeechRecognizer", "Error starting listener: ${e.message}")
-            initRecognizer()
+            initRecognizer(useOnDevice = shouldUseOnDevice)
             try {
                 audioFeatureExtractor.start()
                 speechRecognizer?.startListening(intent)
                 _isListening.value = true
             } catch (e2: Exception) {
                 audioFeatureExtractor.stop()
-                onError("No se pudo activar el micrófono: ${e2.message}")
+                onErrorListener?.invoke("No se pudo activar el micrófono: ${e2.message}")
             }
         }
     }
@@ -203,6 +244,7 @@ class SpeechRecognizerManager(private val context: Context) {
 
     fun stopListening() {
         audioFeatureExtractor.stop()
+        networkFallbackPolicy.reset()
         try {
             speechRecognizer?.stopListening()
         } catch (e: Exception) {
