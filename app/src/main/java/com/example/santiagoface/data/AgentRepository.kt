@@ -134,11 +134,28 @@ data class VisionAnalysisDto(
     val actionReason: String = ""
 )
 
+data class ToolCallParamsDto(
+    val action: String? = null,
+    val speed: Int? = null,
+    @SerializedName("target_distance_cm")
+    val targetDistanceCm: Float? = null,
+    @SerializedName("target_label")
+    val targetLabel: String? = null,
+    val query: String? = null,
+    val key: String? = null,
+    val category: String? = null
+)
+
+data class ToolCallDto(
+    val name: String? = null,
+    val params: ToolCallParamsDto? = null
+)
+
 data class AgentResponse(
     val emotion: String? = "neutral",
     val text: String? = "",
     @SerializedName("tool_call")
-    val toolCall: Any? = null,
+    val toolCall: ToolCallDto? = null,
     @SerializedName("esp32_response")
     val esp32Response: String? = null,
     @SerializedName("esp32_error")
@@ -620,6 +637,27 @@ class AgentRepository(
 
                 val nameResponse = gson.fromJson(responseBody, AgentNameResponse::class.java)
                 nameResponse?.agentName ?: ""
+            }
+        }
+    }
+
+    /**
+     * Notifies the host PC agent whether local autonomous search mode is active,
+     * keeping the chat session history alive while searching.
+     */
+    suspend fun notifySearchStatus(baseUrl: String, active: Boolean): Result<Boolean> = withContext(Dispatchers.IO) {
+        runCatching {
+            val cleanUrl = cleanBaseUrl(baseUrl)
+            val url = "$cleanUrl/api/search/status"
+            val jsonBody = gson.toJson(mapOf("active" to active))
+            val request = Request.Builder()
+                .url(url)
+                .applyApiKey()
+                .post(jsonBody.toRequestBody(jsonMediaType))
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                response.isSuccessful
             }
         }
     }

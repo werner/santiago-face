@@ -10,9 +10,13 @@ import com.example.santiagoface.camera.CameraHelper
 import com.example.santiagoface.camera.DetectedObject
 import com.example.santiagoface.camera.VisionDecisionHelper
 import com.example.santiagoface.data.AgentRepository
+import com.example.santiagoface.data.Esp32Client
 import com.example.santiagoface.data.MlKitDetectionDto
 import com.example.santiagoface.data.VisionAnalysisDto
 import com.example.santiagoface.data.VisualMatchDto
+import com.example.santiagoface.navigation.Esp32SearchTransport
+import com.example.santiagoface.navigation.ObjectSearchController
+import com.example.santiagoface.navigation.SearchState
 import com.example.santiagoface.speech.SpeechRecognizerManager
 import com.example.santiagoface.speech.TtsManager
 import com.example.santiagoface.ui.face.RobotEmotion
@@ -29,8 +33,10 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
     private val defaultUrl = com.example.santiagoface.BuildConfig.DEFAULT_URL
     private val apiKey = com.example.santiagoface.BuildConfig.API_KEY
+    private val defaultEsp32Url = com.example.santiagoface.BuildConfig.ESP32_URL
 
     private val agentRepository = AgentRepository(apiKey = apiKey)
+    private val esp32Client = Esp32Client()
     val speechRecognizer = SpeechRecognizerManager(application)
     val ttsManager = TtsManager(application)
     val cameraHelper = CameraHelper(application)
@@ -46,6 +52,12 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _agentBaseUrl = MutableStateFlow(initialUrl)
     val agentBaseUrl: StateFlow<String> = _agentBaseUrl.asStateFlow()
+
+    private val savedEsp32Url = prefs.getString("esp32_url", null)
+    private val _esp32BaseUrl = MutableStateFlow(
+        if (savedEsp32Url.isNullOrBlank()) defaultEsp32Url else esp32Client.cleanBaseUrl(savedEsp32Url)
+    )
+    val esp32BaseUrl: StateFlow<String> = _esp32BaseUrl.asStateFlow()
 
     private val _agentName = MutableStateFlow("")
     val agentName: StateFlow<String> = _agentName.asStateFlow()
@@ -125,6 +137,27 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
     private var visionLoopJob: Job? = null
 
+    val objectSearchController = ObjectSearchController(
+        scope = viewModelScope,
+        transport = Esp32SearchTransport(esp32Client) { _esp32BaseUrl.value },
+        detectionsProvider = { cameraHelper.mlKitHelper.detectedObjects.value },
+        onHighFrequencyVision = { enabled -> cameraHelper.mlKitHelper.setHighFrequencyMode(enabled) },
+        onEmotionChange = { newEmotion -> _emotion.value = newEmotion },
+        onSpeak = { message ->
+            _lastAgentText.value = message
+            speakReply(message)
+        },
+        onSearchEnded = {
+            viewModelScope.launch {
+                agentRepository.notifySearchStatus(_agentBaseUrl.value, active = false)
+            }
+        }
+    )
+
+    val searchState: StateFlow<SearchState> = objectSearchController.searchState
+    val searchTargetLabel: StateFlow<String?> = objectSearchController.targetLabel
+    val searchDistanceCm: StateFlow<Float?> = objectSearchController.lastDistanceCm
+
     init {
         // Configure initial Spanish locale tag for speech recognizer
         speechRecognizer.updateSpanishLocale(_spanishLocale.value)
@@ -145,6 +178,16 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
         _agentBaseUrl.value = cleanUrl
         prefs.edit().putString("agent_url", cleanUrl).apply()
         testConnection()
+    }
+
+    fun updateEsp32Url(newUrl: String) {
+        val cleanUrl = esp32Client.cleanBaseUrl(newUrl)
+        _esp32BaseUrl.value = cleanUrl
+        prefs.edit().putString("esp32_url", cleanUrl).apply()
+    }
+
+    fun stopObjectSearch() {
+        objectSearchController.cancel(speakFeedback = true)
     }
 
     fun toggleAutoListen(enabled: Boolean) {
@@ -179,6 +222,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun stopCamera() {
+        objectSearchController.cancel(speakFeedback = false)
         stopContinuousVisionLoop()
         cameraHelper.stopCamera()
     }
@@ -261,6 +305,15 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         val trimmed = message.trim()
         if (trimmed.isEmpty() && audioInformation.isNullOrBlank() && voiceFeatures.isNullOrBlank() && sounds.isNullOrBlank() && !isCameraActive.value) return
+
+        // Immediate voice interrupt while autonomous object search is running
+        if (objectSearchController.isSearching() && isSearchCancelCommand(trimmed)) {
+            _lastUserText.value = trimmed
+            _isThinking.value = false
+            _speculativeThought.value = null
+            objectSearchController.cancel(speakFeedback = true)
+            return
+        }
 
         _lastUserText.value = trimmed.ifEmpty { "[Input con Cámara/Audio]" }
         _isThinking.value = true
@@ -353,17 +406,29 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
                 val replyText = response.text?.trim().orEmpty()
                 _lastAgentText.value = replyText
 
-                // Check if response triggered or updated continuous visual loop
-                val analysis = response.visionAnalysis
-                if (analysis != null && cameraHelper.isCameraActive.value) {
-                    val navBehavior = analysis.navigationBehavior.lowercase()
-                    if (navBehavior == "approach" || navBehavior == "search" || navBehavior == "align") {
-                        val targetQuery = analysis.targetQuery ?: target
-                        startContinuousVisionLoop(
-                            goal = if (navBehavior == "search") "search" else "approach",
-                            target = targetQuery,
-                            cameraFovDeg = fovPayload
-                        )
+                // Check if LLM triggered the local autonomous find_object state machine
+                val toolName = response.toolCall?.name?.lowercase()
+                if (toolName == "find_object" || toolName == "search_object") {
+                    val targetLabel = response.toolCall?.params?.targetLabel
+                        ?: response.toolCall?.params?.query
+                        ?: target
+                    if (!targetLabel.isNullOrBlank()) {
+                        stopContinuousVisionLoop()
+                        objectSearchController.startSearch(targetLabel)
+                    }
+                } else {
+                    // Check if response triggered or updated continuous visual loop
+                    val analysis = response.visionAnalysis
+                    if (analysis != null && cameraHelper.isCameraActive.value) {
+                        val navBehavior = analysis.navigationBehavior.lowercase()
+                        if (navBehavior == "approach" || navBehavior == "search" || navBehavior == "align") {
+                            val targetQuery = analysis.targetQuery ?: target
+                            startContinuousVisionLoop(
+                                goal = if (navBehavior == "search") "search" else "approach",
+                                target = targetQuery,
+                                cameraFovDeg = fovPayload
+                            )
+                        }
                     }
                 }
 
@@ -454,6 +519,22 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
         visionLoopJob = null
         _activeGoal.value = null
         _activeTarget.value = null
+    }
+
+    private fun isSearchCancelCommand(text: String): Boolean {
+        val lower = text.trim().lowercase()
+        return lower == "para" ||
+            lower == "detente" ||
+            lower == "cancela" ||
+            lower == "cancelar" ||
+            lower == "stop" ||
+            lower == "cancel" ||
+            lower == "alto" ||
+            lower == "basta" ||
+            lower.contains("detente") ||
+            lower.contains("cancela") ||
+            lower.contains("para la búsqueda") ||
+            lower.contains("para la busqueda")
     }
 
     private fun speakReply(text: String) {

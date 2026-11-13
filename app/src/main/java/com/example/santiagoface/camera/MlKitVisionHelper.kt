@@ -23,7 +23,9 @@ data class DetectedObject(
     val label: String,
     val confidence: Float,
     val boundingBox: BoundingBoxDto? = null,
-    val trackingId: Int? = null
+    val trackingId: Int? = null,
+    val centerXNorm: Float = boundingBox?.let { (it.centerX * 2f - 1f).coerceIn(-1f, 1f) } ?: 0f,
+    val areaRatio: Float = boundingBox?.areaRatio?.coerceIn(0f, 1f) ?: 0f
 ) {
     fun toDto(): MlKitDetectionDto {
         return MlKitDetectionDto(
@@ -57,7 +59,15 @@ class MlKitVisionHelper {
 
     private val isProcessing = AtomicBoolean(false)
     private var lastAnalysisTimestamp = 0L
-    private val throttleIntervalMs = 350L // ~3 Hz to optimize CPU & battery
+    @Volatile
+    private var highFrequencyMode = false
+
+    private val throttleIntervalMs: Long
+        get() = if (highFrequencyMode) 65L else 350L // ~15 Hz in search mode, ~3 Hz idle
+
+    fun setHighFrequencyMode(enabled: Boolean) {
+        highFrequencyMode = enabled
+    }
 
     /**
      * Processes a bitmap asynchronously, running ML Kit object detection & image labeling.
@@ -109,27 +119,7 @@ class MlKitVisionHelper {
                     // 2. Also run Image Labeler for fine-grained semantic labels (e.g. Cup, Bottle, Person, Chair)
                     imageLabeler.process(inputImage)
                         .addOnSuccessListener { labels ->
-                            for (label in labels) {
-                                // Add if not already covered with higher confidence
-                                val existingIndex = results.indexOfFirst {
-                                    it.label.equals(label.text, ignoreCase = true)
-                                }
-                                if (existingIndex >= 0) {
-                                    val existing = results[existingIndex]
-                                    if (label.confidence > existing.confidence) {
-                                        results[existingIndex] = existing.copy(confidence = label.confidence)
-                                    }
-                                } else {
-                                    results.add(
-                                        DetectedObject(
-                                            label = label.text,
-                                            confidence = label.confidence,
-                                            boundingBox = null
-                                        )
-                                    )
-                                }
-                            }
-
+                            mergeImageLabelsWithBoxes(results, labels.map { it.text to it.confidence })
                             // Keep sorted by confidence descending
                             results.sortByDescending { it.confidence }
                             _detectedObjects.value = results.take(10)
@@ -179,23 +169,7 @@ class MlKitVisionHelper {
                 )
             }
 
-            for (label in labelTask.result) {
-                val existingIndex = results.indexOfFirst { it.label.equals(label.text, ignoreCase = true) }
-                if (existingIndex >= 0) {
-                    val existing = results[existingIndex]
-                    if (label.confidence > existing.confidence) {
-                        results[existingIndex] = existing.copy(confidence = label.confidence)
-                    }
-                } else {
-                    results.add(
-                        DetectedObject(
-                            label = label.text,
-                            confidence = label.confidence,
-                            boundingBox = null
-                        )
-                    )
-                }
-            }
+            mergeImageLabelsWithBoxes(results, labelTask.result.map { it.text to it.confidence })
 
             results.sortByDescending { it.confidence }
             val finalResult = results.take(10)
@@ -242,19 +216,75 @@ class MlKitVisionHelper {
         }
     }
 
+    private fun mergeImageLabelsWithBoxes(
+        results: MutableList<DetectedObject>,
+        labels: List<Pair<String, Float>>
+    ) {
+        val genericBoxFallback = results
+            .filter { it.boundingBox != null && it.label.lowercase() in GENERIC_OBJECT_LABELS }
+            .maxByOrNull { it.areaRatio }
+            ?.boundingBox
+
+        for ((labelText, labelConf) in labels) {
+            val existingIndex = results.indexOfFirst {
+                it.label.equals(labelText, ignoreCase = true)
+            }
+            if (existingIndex >= 0) {
+                val existing = results[existingIndex]
+                if (labelConf > existing.confidence) {
+                    results[existingIndex] = existing.copy(confidence = labelConf)
+                }
+            } else {
+                val box = genericBoxFallback
+                results.add(
+                    DetectedObject(
+                        label = labelText,
+                        confidence = labelConf,
+                        boundingBox = box,
+                        centerXNorm = box?.let { (it.centerX * 2f - 1f).coerceIn(-1f, 1f) } ?: 0f,
+                        areaRatio = box?.areaRatio?.coerceIn(0f, 1f) ?: 0f
+                    )
+                )
+            }
+        }
+    }
+
     /**
-     * Checks if a target object is detected by ML Kit.
+     * Checks if a target object is detected by ML Kit, supporting COCO/ML Kit label aliases.
      */
     fun findTarget(targetQuery: String, minConfidence: Float = 0.50f): DetectedObject? {
         val normalizedQuery = targetQuery.trim().lowercase()
-        return _detectedObjects.value.firstOrNull { detection ->
-            detection.confidence >= minConfidence &&
-                (detection.label.lowercase().contains(normalizedQuery) ||
-                    normalizedQuery.contains(detection.label.lowercase()))
-        }
+        val aliases = LABEL_ALIASES[normalizedQuery] ?: listOf(normalizedQuery)
+        return _detectedObjects.value
+            .filter { detection ->
+                detection.confidence >= minConfidence && aliases.any { alias ->
+                    val detLabel = detection.label.lowercase()
+                    detLabel == alias || detLabel.contains(alias) || alias.contains(detLabel)
+                }
+            }
+            .maxByOrNull { it.confidence }
     }
 
     fun clear() {
         _detectedObjects.value = emptyList()
+    }
+
+    companion object {
+        private val GENERIC_OBJECT_LABELS = setOf(
+            "object", "home good", "food", "fashion good", "place", "plant"
+        )
+
+        private val LABEL_ALIASES = mapOf(
+            "cup" to listOf("cup", "mug", "coffee cup", "teacup", "tableware"),
+            "bottle" to listOf("bottle", "water bottle", "drinkware"),
+            "cell phone" to listOf("cell phone", "mobile phone", "telephone", "smartphone", "phone"),
+            "person" to listOf("person", "human", "man", "woman", "face", "people"),
+            "dining table" to listOf("dining table", "table", "desk"),
+            "tv" to listOf("tv", "television", "monitor", "screen"),
+            "laptop" to listOf("laptop", "computer", "notebook"),
+            "potted plant" to listOf("potted plant", "plant", "houseplant"),
+            "sports ball" to listOf("sports ball", "ball"),
+            "couch" to listOf("couch", "sofa")
+        )
     }
 }

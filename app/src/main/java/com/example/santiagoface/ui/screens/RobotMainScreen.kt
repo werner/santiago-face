@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material.icons.filled.VideocamOff
 import androidx.compose.material3.Button
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.santiagoface.navigation.SearchState
 import com.example.santiagoface.ui.face.RobotFaceCanvas
 import com.example.santiagoface.ui.viewmodel.RobotViewModel
 import com.google.android.gms.location.LocationServices
@@ -91,6 +93,9 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
     val isContinuousVisionLoopActive by viewModel.isContinuousVisionLoopActive.collectAsState()
     val activeGoal by viewModel.activeGoal.collectAsState()
     val activeTarget by viewModel.activeTarget.collectAsState()
+    val searchState by viewModel.searchState.collectAsState()
+    val searchTargetLabel by viewModel.searchTargetLabel.collectAsState()
+    val searchDistanceCm by viewModel.searchDistanceCm.collectAsState()
 
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
@@ -358,11 +363,36 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
                 label = "micPulseScale"
             )
 
-            // 2 Action Buttons: Enable Mic & Turn Off Mic
+            // 2 Action Buttons: Enable Mic & Turn Off Mic (plus Stop Search when active)
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                if (searchState != SearchState.IDLE) {
+                    val distText = searchDistanceCm?.let { " • ${it.toInt()}cm" } ?: ""
+                    Button(
+                        onClick = { viewModel.stopObjectSearch() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFF1744)
+                        ),
+                        shape = RoundedCornerShape(24.dp),
+                        modifier = Modifier.height(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Stop,
+                            contentDescription = "Detener búsqueda",
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Detener (${searchTargetLabel ?: searchState.name}$distText)",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
                 // Button 1: Enable Microphone (stays enabled until closed/turned off)
                 Button(
                     onClick = { handleEnableMicClick() },

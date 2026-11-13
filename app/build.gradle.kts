@@ -26,6 +26,8 @@ fun getEnvOrProperty(key: String, defaultValue: String): String {
 
 val defaultUrl = getEnvOrProperty("DEFAULT_URL", "http://10.0.2.2:3000")
 val apiKey = getEnvOrProperty("API_KEY", "")
+val esp32Url = getEnvOrProperty("ESP32_URL", "http://santiago-esp32.local")
+val esp32ApiKey = getEnvOrProperty("ESP32_API_KEY", "santiago-secret-key-1234")
 
 android {
     namespace = "com.example.santiagoface"
@@ -44,6 +46,8 @@ android {
 
         buildConfigField("String", "DEFAULT_URL", "\"$defaultUrl\"")
         buildConfigField("String", "API_KEY", "\"$apiKey\"")
+        buildConfigField("String", "ESP32_URL", "\"$esp32Url\"")
+        buildConfigField("String", "ESP32_API_KEY", "\"$esp32ApiKey\"")
     }
 
     buildTypes {
