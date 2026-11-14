@@ -180,6 +180,31 @@ class CameraHelper(private val context: Context) {
         }
     }
 
+    fun getLatestJpegBytes(
+        targetWidth: Int = 640,
+        targetHeight: Int = 480,
+        quality: Int = 70
+    ): ByteArray? {
+        val bmpCopy = getCurrentBitmapCopy() ?: return null
+        return try {
+            val scaledBitmap = if (bmpCopy.width != targetWidth || bmpCopy.height != targetHeight) {
+                Bitmap.createScaledBitmap(bmpCopy, targetWidth, targetHeight, true)
+            } else {
+                bmpCopy
+            }
+            val outputStream = ByteArrayOutputStream()
+            scaledBitmap.compress(Bitmap.CompressFormat.JPEG, quality, outputStream)
+            if (scaledBitmap != bmpCopy) {
+                scaledBitmap.recycle()
+            }
+            outputStream.toByteArray()
+        } catch (_: Exception) {
+            null
+        } finally {
+            bmpCopy.recycle()
+        }
+    }
+
     /**
      * Captures a single current camera frame processed as Base64 JPEG (320x240 or 640x480, quality=80)
      * ON DEMAND only when explicitly requested.

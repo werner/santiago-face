@@ -17,6 +17,7 @@ import com.example.santiagoface.data.VisualMatchDto
 import com.example.santiagoface.navigation.Esp32SearchTransport
 import com.example.santiagoface.navigation.ObjectSearchController
 import com.example.santiagoface.navigation.SearchState
+import com.example.santiagoface.network.FaceHttpServer
 import com.example.santiagoface.speech.SpeechRecognizerManager
 import com.example.santiagoface.speech.TtsManager
 import com.example.santiagoface.ui.face.RobotEmotion
@@ -158,13 +159,42 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     val searchTargetLabel: StateFlow<String?> = objectSearchController.targetLabel
     val searchDistanceCm: StateFlow<Float?> = objectSearchController.lastDistanceCm
 
+    private val faceHttpServer = FaceHttpServer(
+        port = 8080,
+        cameraHelper = cameraHelper,
+        currentEmotionProvider = { _emotion.value.name.lowercase() },
+        onRemoteAgentResponse = { emotionStr, text ->
+            applyRemoteAgentResponse(emotionStr, text)
+        }
+    )
+
     init {
         // Configure initial Spanish locale tag for speech recognizer
         speechRecognizer.updateSpanishLocale(_spanishLocale.value)
         // Persist the clean initial URL
         prefs.edit().putString("agent_url", initialUrl).apply()
+        // Start embedded HTTP/MJPEG server for SantiagoRemote
+        faceHttpServer.start(viewModelScope)
         // Initial health check
         testConnection()
+    }
+
+    fun applyRemoteAgentResponse(emotionStr: String?, text: String?) {
+        viewModelScope.launch {
+            if (!emotionStr.isNullOrBlank()) {
+                _emotion.value = when (emotionStr.trim().lowercase()) {
+                    "happy" -> RobotEmotion.HAPPY
+                    "sad" -> RobotEmotion.SAD
+                    "angry" -> RobotEmotion.ANGRY
+                    "curious" -> RobotEmotion.CURIOUS
+                    else -> RobotEmotion.NEUTRAL
+                }
+            }
+            if (!text.isNullOrBlank()) {
+                _lastAgentText.value = text
+                speakReply(text)
+            }
+        }
     }
 
     fun updateSpanishLocale(localeTag: String) {
@@ -608,6 +638,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        faceHttpServer.stop()
         stopCamera()
         speechRecognizer.destroy()
         ttsManager.shutdown()
