@@ -27,9 +27,15 @@ data class RemoteAgentResponsePayload(
     val text: String? = null
 )
 
+data class WebRtcSdpPayload(
+    val sdp: String? = null,
+    val type: String? = null
+)
+
 /**
  * Lightweight embedded HTTP server for SantiagoFace:
- * - GET /stream (or /video): Live MJPEG stream (multipart/x-mixed-replace) from CameraHelper
+ * - POST /webrtc/offer & /webrtc/stop: WebRTC SDP signaling (video flows over UDP/SRTP)
+ * - GET /stream (or /video): Legacy MJPEG stream fallback
  * - GET /snapshot: Single JPEG frame
  * - GET /api/health: Health & status JSON
  * - POST /api/agent-response: Receives LLM agent response (emotion + text) from SantiagoRemote
@@ -38,7 +44,9 @@ class FaceHttpServer(
     private val port: Int = 8080,
     private val cameraHelper: CameraHelper,
     private val currentEmotionProvider: () -> String,
-    private val onRemoteAgentResponse: (emotion: String?, text: String?) -> Unit
+    private val onRemoteAgentResponse: (emotion: String?, text: String?) -> Unit,
+    private val onWebRtcOffer: (suspend (offerSdp: String) -> String?)? = null,
+    private val onWebRtcStop: (() -> Unit)? = null
 ) {
     private val gson = Gson()
     private var serverSocket: ServerSocket? = null
@@ -128,6 +136,31 @@ class FaceHttpServer(
                         )
                     )
                     writeJsonResponse(output, 200, "OK", body)
+                }
+                method == "POST" && path == "/webrtc/offer" -> {
+                    val contentLength = headers["content-length"]?.toIntOrNull()?.coerceIn(0, 1_048_576) ?: 0
+                    val bodyBytes = if (contentLength > 0) readExactBytes(input, contentLength) else ByteArray(0)
+                    val bodyStr = String(bodyBytes, StandardCharsets.UTF_8)
+                    val offer = runCatching {
+                        gson.fromJson(bodyStr, WebRtcSdpPayload::class.java)
+                    }.getOrNull()
+                    val offerSdp = offer?.sdp
+                    val handler = onWebRtcOffer
+                    if (offerSdp.isNullOrBlank() || handler == null) {
+                        writeJsonResponse(output, 400, "Bad Request", """{"status":"error","message":"Invalid WebRTC offer"}""")
+                    } else {
+                        val answerSdp = handler(offerSdp)
+                        if (answerSdp.isNullOrBlank()) {
+                            writeJsonResponse(output, 500, "Internal Server Error", """{"status":"error","message":"Failed to create WebRTC answer"}""")
+                        } else {
+                            val respJson = gson.toJson(WebRtcSdpPayload(sdp = answerSdp, type = "answer"))
+                            writeJsonResponse(output, 200, "OK", respJson)
+                        }
+                    }
+                }
+                method == "POST" && path == "/webrtc/stop" -> {
+                    onWebRtcStop?.invoke()
+                    writeJsonResponse(output, 200, "OK", """{"status":"ok"}""")
                 }
                 method == "POST" && (path == "/api/agent-response" || path == "/api/response") -> {
                     val contentLength = headers["content-length"]?.toIntOrNull()?.coerceIn(0, 1_048_576) ?: 0

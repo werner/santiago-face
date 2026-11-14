@@ -43,6 +43,9 @@ class CameraHelper(private val context: Context) {
     private var currentBitmap: Bitmap? = null
     private val bitmapLock = Any()
 
+    @Volatile
+    var onFrameListener: ((Bitmap) -> Unit)? = null
+
     init {
         updateFov()
     }
@@ -169,6 +172,7 @@ class CameraHelper(private val context: Context) {
             // High-efficiency: Feed frame to on-device ML Kit analyzer (throttled).
             // Do NOT encode Base64 here to avoid heavy CPU/GC overhead.
             mlKitHelper.processBitmapThrottled(processedBitmap)
+            onFrameListener?.invoke(processedBitmap)
 
             if (processedBitmap != bitmap) {
                 bitmap.recycle()

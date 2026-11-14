@@ -19,6 +19,7 @@ import com.example.santiagoface.navigation.ObjectSearchController
 import com.example.santiagoface.navigation.SearchState
 import com.example.santiagoface.network.FaceHttpServer
 import com.example.santiagoface.network.FaceNsdAdvertiser
+import com.example.santiagoface.network.WebRtcStreamer
 import com.example.santiagoface.speech.SpeechRecognizerManager
 import com.example.santiagoface.speech.TtsManager
 import com.example.santiagoface.ui.face.RobotEmotion
@@ -160,17 +161,29 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
     val searchTargetLabel: StateFlow<String?> = objectSearchController.targetLabel
     val searchDistanceCm: StateFlow<Float?> = objectSearchController.lastDistanceCm
 
+    private val webRtcStreamer = WebRtcStreamer(application)
+
     private val faceHttpServer = FaceHttpServer(
         port = 8080,
         cameraHelper = cameraHelper,
         currentEmotionProvider = { _emotion.value.name.lowercase() },
         onRemoteAgentResponse = { emotionStr, text ->
             applyRemoteAgentResponse(emotionStr, text)
+        },
+        onWebRtcOffer = { offerSdp ->
+            webRtcStreamer.handleOffer(offerSdp)
+        },
+        onWebRtcStop = {
+            webRtcStreamer.closePeerConnection()
         }
     )
     private val faceNsdAdvertiser = FaceNsdAdvertiser(application)
 
     init {
+        // Forward CameraX frames to WebRTC video source
+        cameraHelper.onFrameListener = { bitmap ->
+            webRtcStreamer.pushBitmapFrame(bitmap)
+        }
         // Configure initial Spanish locale tag for speech recognizer
         speechRecognizer.updateSpanishLocale(_spanishLocale.value)
         // Persist the clean initial URL
@@ -641,8 +654,10 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        cameraHelper.onFrameListener = null
         faceNsdAdvertiser.unregister()
         faceHttpServer.stop()
+        webRtcStreamer.dispose()
         stopCamera()
         speechRecognizer.destroy()
         ttsManager.shutdown()
