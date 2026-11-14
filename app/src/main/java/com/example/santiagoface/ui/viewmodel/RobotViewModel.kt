@@ -18,6 +18,7 @@ import com.example.santiagoface.navigation.Esp32SearchTransport
 import com.example.santiagoface.navigation.ObjectSearchController
 import com.example.santiagoface.navigation.SearchState
 import com.example.santiagoface.network.FaceHttpServer
+import com.example.santiagoface.network.FaceNsdAdvertiser
 import com.example.santiagoface.speech.SpeechRecognizerManager
 import com.example.santiagoface.speech.TtsManager
 import com.example.santiagoface.ui.face.RobotEmotion
@@ -167,14 +168,16 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
             applyRemoteAgentResponse(emotionStr, text)
         }
     )
+    private val faceNsdAdvertiser = FaceNsdAdvertiser(application)
 
     init {
         // Configure initial Spanish locale tag for speech recognizer
         speechRecognizer.updateSpanishLocale(_spanishLocale.value)
         // Persist the clean initial URL
         prefs.edit().putString("agent_url", initialUrl).apply()
-        // Start embedded HTTP/MJPEG server for SantiagoRemote
+        // Start embedded HTTP/MJPEG server + mDNS advertisement for SantiagoRemote
         faceHttpServer.start(viewModelScope)
+        faceNsdAdvertiser.register(port = 8080)
         // Initial health check
         testConnection()
     }
@@ -638,6 +641,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         super.onCleared()
+        faceNsdAdvertiser.unregister()
         faceHttpServer.stop()
         stopCamera()
         speechRecognizer.destroy()

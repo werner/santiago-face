@@ -1,5 +1,9 @@
 package com.example.santiagoface.network
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.util.Log
 import com.example.santiagoface.camera.CameraHelper
 import com.google.gson.Gson
@@ -169,16 +173,43 @@ class FaceHttpServer(
         while (!socket.isClosed) {
             val jpeg = cameraHelper.getLatestJpegBytes(targetWidth = 640, targetHeight = 480, quality = 65)
             if (jpeg != null) {
-                val partHeader = "--$boundary\r\nContent-Type: image/jpeg\r\nContent-Length: ${jpeg.size}\r\n\r\n"
-                output.write(partHeader.toByteArray(StandardCharsets.US_ASCII))
-                output.write(jpeg)
-                output.write("\r\n".toByteArray(StandardCharsets.US_ASCII))
-                output.flush()
+                writeMjpegFrame(output, boundary, jpeg)
                 delay(66) // ~15 FPS
             } else {
-                delay(150)
+                writeMjpegFrame(output, boundary, getPlaceholderJpeg())
+                delay(1000) // 1 FPS keep-alive while camera is off
             }
         }
+    }
+
+    private fun writeMjpegFrame(output: OutputStream, boundary: String, jpeg: ByteArray) {
+        val partHeader = "--$boundary\r\nContent-Type: image/jpeg\r\nContent-Length: ${jpeg.size}\r\n\r\n"
+        output.write(partHeader.toByteArray(StandardCharsets.US_ASCII))
+        output.write(jpeg)
+        output.write("\r\n".toByteArray(StandardCharsets.US_ASCII))
+        output.flush()
+    }
+
+    private var cachedPlaceholderJpeg: ByteArray? = null
+
+    private fun getPlaceholderJpeg(): ByteArray {
+        cachedPlaceholderJpeg?.let { return it }
+        val bmp = Bitmap.createBitmap(480, 360, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bmp)
+        canvas.drawColor(Color.rgb(10, 14, 23))
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(0, 229, 255)
+            textSize = 24f
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText("SantiagoFace Camera Off", 240f, 170f, paint)
+        paint.color = Color.rgb(148, 163, 184)
+        paint.textSize = 18f
+        canvas.drawText("Enable camera on Face app", 240f, 205f, paint)
+        val out = ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.JPEG, 70, out)
+        bmp.recycle()
+        return out.toByteArray().also { cachedPlaceholderJpeg = it }
     }
 
     private fun writeJsonResponse(output: OutputStream, code: Int, reason: String, json: String) {
