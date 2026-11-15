@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.util.Log
 import com.example.santiagoface.camera.CameraHelper
+import com.example.santiagoface.logging.LogShipper
 import com.google.gson.Gson
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -71,7 +72,7 @@ class FaceHttpServer(
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to start FaceHttpServer on port $port: ${e.message}")
+                LogShipper.e(TAG, "Failed to start FaceHttpServer on port $port: ${e.message}", e, mapOf("port" to port))
             }
         }
     }

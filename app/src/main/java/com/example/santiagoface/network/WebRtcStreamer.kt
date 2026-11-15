@@ -3,6 +3,7 @@ package com.example.santiagoface.network
 import android.content.Context
 import android.graphics.Bitmap
 import android.util.Log
+import com.example.santiagoface.logging.LogShipper
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 import org.webrtc.DataChannel
@@ -107,7 +108,7 @@ class WebRtcStreamer(context: Context) {
             SimpleSdpObserver(
                 onSetSuccess = { setRemoteDone.complete(true) },
                 onSetFailure = { err ->
-                    Log.e(TAG, "setRemoteDescription failed: $err")
+                    LogShipper.e(TAG, "setRemoteDescription failed: $err", details = mapOf("stage" to "setRemoteDescription"))
                     setRemoteDone.complete(false)
                 }
             ),
@@ -120,7 +121,7 @@ class WebRtcStreamer(context: Context) {
             SimpleSdpObserver(
                 onCreateSuccess = { sdp -> answerCreated.complete(sdp) },
                 onCreateFailure = { err ->
-                    Log.e(TAG, "createAnswer failed: $err")
+                    LogShipper.e(TAG, "createAnswer failed: $err", details = mapOf("stage" to "createAnswer"))
                     answerCreated.complete(null)
                 }
             ),
@@ -133,7 +134,7 @@ class WebRtcStreamer(context: Context) {
             SimpleSdpObserver(
                 onSetSuccess = { setLocalDone.complete(true) },
                 onSetFailure = { err ->
-                    Log.e(TAG, "setLocalDescription failed: $err")
+                    LogShipper.e(TAG, "setLocalDescription failed: $err", details = mapOf("stage" to "setLocalDescription"))
                     setLocalDone.complete(false)
                 }
             ),

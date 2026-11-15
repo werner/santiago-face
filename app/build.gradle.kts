@@ -28,6 +28,8 @@ val defaultUrl = getEnvOrProperty("DEFAULT_URL", "http://10.0.2.2:3000")
 val apiKey = getEnvOrProperty("API_KEY", "")
 val esp32Url = getEnvOrProperty("ESP32_URL", "http://santiago-esp32.local")
 val esp32ApiKey = getEnvOrProperty("ESP32_API_KEY", "santiago-secret-key-1234")
+val grafanaLogsUrl = getEnvOrProperty("GRAFANA_LOGS_URL", "http://santiago-logs.local:3001/d/santiago-robot-logs/santiago-robot-observability")
+val logsIngestUrl = getEnvOrProperty("LOGS_INGEST_URL", "http://santiago-logs.local:9000/logs/santiago_face")
 
 android {
     namespace = "com.example.santiagoface"
@@ -48,6 +50,8 @@ android {
         buildConfigField("String", "API_KEY", "\"$apiKey\"")
         buildConfigField("String", "ESP32_URL", "\"$esp32Url\"")
         buildConfigField("String", "ESP32_API_KEY", "\"$esp32ApiKey\"")
+        buildConfigField("String", "GRAFANA_LOGS_URL", "\"$grafanaLogsUrl\"")
+        buildConfigField("String", "LOGS_INGEST_URL", "\"$logsIngestUrl\"")
     }
 
     buildTypes {

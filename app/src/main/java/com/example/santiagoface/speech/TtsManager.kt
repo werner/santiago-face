@@ -4,6 +4,7 @@ import android.content.Context
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import com.example.santiagoface.logging.LogShipper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,7 +43,7 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
             tts?.setSpeechRate(1.0f)
             configureLanguageAndVoiceForText("Hola")
         } else {
-            Log.e("TtsManager", "TTS Initialization failed with status: $status")
+            LogShipper.e("TtsManager", "TTS Initialization failed with status: $status", details = mapOf("status" to status))
         }
     }
 

@@ -7,6 +7,7 @@ import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
+import com.example.santiagoface.logging.LogShipper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -55,14 +56,14 @@ class SpeechRecognizerManager(private val context: Context) {
                 Log.i("SpeechRecognizer", "Initialized on-device speech recognizer.")
             } else {
                 if (!SpeechRecognizer.isRecognitionAvailable(appContext)) {
-                    Log.e("SpeechRecognizer", "Speech recognition is not available on this device.")
+                    LogShipper.e("SpeechRecognizer", "Speech recognition is not available on this device.")
                     return
                 }
                 speechRecognizer = SpeechRecognizer.createSpeechRecognizer(appContext)
                 isUsingOnDeviceRecognizer = false
             }
         } catch (e: Exception) {
-            Log.e("SpeechRecognizer", "Failed to create speech recognizer: ${e.message}")
+            LogShipper.e("SpeechRecognizer", "Failed to create speech recognizer: ${e.message}", e)
             speechRecognizer = null
             isUsingOnDeviceRecognizer = false
             return
@@ -98,7 +99,7 @@ class SpeechRecognizerManager(private val context: Context) {
                 _audioLevel.value = 0f
                 audioFeatureExtractor.stop()
                 val errorMessage = getErrorMessage(error)
-                Log.e("SpeechRecognizer", "Error code $error: $errorMessage")
+                LogShipper.e("SpeechRecognizer", "Error code $error: $errorMessage", details = mapOf("error_code" to error))
 
                 val isNetworkError =
                     error == SpeechRecognizer.ERROR_NETWORK || error == SpeechRecognizer.ERROR_NETWORK_TIMEOUT

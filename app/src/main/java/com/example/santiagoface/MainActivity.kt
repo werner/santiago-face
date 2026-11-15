@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.santiagoface.logging.LogShipper
 import com.example.santiagoface.ui.screens.RobotMainScreen
 import com.example.santiagoface.ui.theme.SantiagoFaceTheme
 import com.example.santiagoface.ui.viewmodel.RobotViewModel
@@ -16,6 +17,7 @@ import com.example.santiagoface.ui.viewmodel.RobotViewModel
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        LogShipper.init(applicationContext)
         enableEdgeToEdge()
         setContent {
             SantiagoFaceTheme {
