@@ -43,13 +43,25 @@ object LogShipper {
         val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             try {
-                sendSync(
-                    level = "error",
-                    tag = "UncaughtException",
-                    message = "Uncaught exception on thread '${thread.name}': ${throwable.message}",
-                    throwable = throwable,
-                    details = mapOf("thread" to thread.name, "fatal" to true)
-                )
+                // Run on a dedicated thread so we don't queue behind normal log shipping
+                // or hit NetworkOnMainThreadException when crashing on the main thread.
+                val crashClient = client.newBuilder()
+                    .callTimeout(2, TimeUnit.SECONDS)
+                    .build()
+                val crashThread = Thread({
+                    sendSync(
+                        level = "error",
+                        tag = "UncaughtException",
+                        message = "Uncaught exception on thread '${thread.name}': ${throwable.message}",
+                        throwable = throwable,
+                        details = mapOf("thread" to thread.name, "fatal" to true),
+                        httpClient = crashClient
+                    )
+                }, "santiago-face-crash-shipper").apply {
+                    isDaemon = true
+                    start()
+                }
+                crashThread.join(2500)
             } catch (_: Exception) {
             } finally {
                 previousHandler?.uncaughtException(thread, throwable)
@@ -102,7 +114,8 @@ object LogShipper {
         tag: String,
         message: String,
         throwable: Throwable?,
-        details: Map<String, Any?>
+        details: Map<String, Any?>,
+        httpClient: OkHttpClient = client
     ) {
         val url = BuildConfig.LOGS_INGEST_URL
         if (url.isBlank()) return
@@ -137,7 +150,7 @@ object LogShipper {
             .build()
 
         try {
-            client.newCall(request).execute().close()
+            httpClient.newCall(request).execute().close()
         } catch (_: Exception) {
         }
     }

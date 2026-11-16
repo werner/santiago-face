@@ -174,7 +174,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
             webRtcStreamer.handleOffer(offerSdp)
         },
         onWebRtcStop = {
-            webRtcStreamer.closePeerConnection()
+            webRtcStreamer.stop()
         }
     )
     private val faceNsdAdvertiser = FaceNsdAdvertiser(application)
