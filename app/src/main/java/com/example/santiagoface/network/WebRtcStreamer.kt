@@ -5,6 +5,8 @@ import android.graphics.Bitmap
 import android.util.Log
 import com.example.santiagoface.logging.LogShipper
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import org.webrtc.DataChannel
 import org.webrtc.DefaultVideoDecoderFactory
@@ -45,6 +47,11 @@ class WebRtcStreamer(context: Context) {
     @Volatile
     private var lastFramePushMs: Long = 0L
 
+    @Volatile
+    private var isDisposed: Boolean = false
+
+    private val offerMutex = Mutex()
+
     init {
         PeerConnectionFactory.initialize(
             PeerConnectionFactory.InitializationOptions.builder(context.applicationContext)
@@ -64,7 +71,8 @@ class WebRtcStreamer(context: Context) {
         videoTrack.setEnabled(true)
     }
 
-    suspend fun handleOffer(offerSdp: String): String? {
+    suspend fun handleOffer(offerSdp: String): String? = offerMutex.withLock {
+        if (isDisposed) return@withLock null
         closePeerConnection()
 
         val iceGatheringComplete = CompletableDeferred<Unit>()
@@ -98,7 +106,7 @@ class WebRtcStreamer(context: Context) {
             override fun onDataChannel(channel: DataChannel?) {}
             override fun onRenegotiationNeeded() {}
             override fun onAddTrack(receiver: RtpReceiver?, streams: Array<out MediaStream>?) {}
-        }) ?: return null
+        }) ?: return@withLock null
 
         peerConnection = pc
         pc.addTrack(videoTrack, listOf("santiago_stream"))
@@ -114,7 +122,7 @@ class WebRtcStreamer(context: Context) {
             ),
             SessionDescription(SessionDescription.Type.OFFER, offerSdp)
         )
-        if (!setRemoteDone.await()) return null
+        if (!setRemoteDone.await()) return@withLock null
 
         val answerCreated = CompletableDeferred<SessionDescription?>()
         pc.createAnswer(
@@ -127,7 +135,7 @@ class WebRtcStreamer(context: Context) {
             ),
             MediaConstraints()
         )
-        val answer = answerCreated.await() ?: return null
+        val answer = answerCreated.await() ?: return@withLock null
 
         val setLocalDone = CompletableDeferred<Boolean>()
         pc.setLocalDescription(
@@ -140,18 +148,18 @@ class WebRtcStreamer(context: Context) {
             ),
             answer
         )
-        if (!setLocalDone.await()) return null
+        if (!setLocalDone.await()) return@withLock null
 
         // Wait up to 1.5s for host ICE candidates to be gathered into localDescription
         withTimeoutOrNull(1500) {
             iceGatheringComplete.await()
         }
 
-        return pc.localDescription?.description
+        pc.localDescription?.description
     }
 
     fun pushBitmapFrame(bitmap: Bitmap) {
-        if (peerConnection == null || bitmap.isRecycled) return
+        if (isDisposed || peerConnection == null || bitmap.isRecycled) return
         val now = System.currentTimeMillis()
         if (now - lastFramePushMs < 40L) return // cap at ~25 FPS
         lastFramePushMs = now
@@ -190,6 +198,7 @@ class WebRtcStreamer(context: Context) {
     }
 
     fun dispose() {
+        isDisposed = true
         closePeerConnection()
         runCatching { videoTrack.dispose() }
         runCatching { videoSource.dispose() }

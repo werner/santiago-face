@@ -83,16 +83,31 @@ class MlKitVisionHelper {
         }
         lastAnalysisTimestamp = now
 
+        var safeBitmap: Bitmap? = null
         try {
             if (bitmap.isRecycled) {
                 isProcessing.set(false)
                 return
             }
 
-            // Create a small, safe copy if needed or use directly
-            val inputImage = InputImage.fromBitmap(bitmap, 0)
-            val bmpWidth = bitmap.width.toFloat()
-            val bmpHeight = bitmap.height.toFloat()
+            // Copy the bitmap so CameraHelper recycling currentBitmap on the next frame
+            // cannot invalidate the Bitmap while ML Kit reads it asynchronously.
+            safeBitmap = bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, false)
+            if (safeBitmap == null) {
+                isProcessing.set(false)
+                return
+            }
+
+            val inputImage = InputImage.fromBitmap(safeBitmap, 0)
+            val bmpWidth = safeBitmap.width.toFloat()
+            val bmpHeight = safeBitmap.height.toFloat()
+
+            fun finishProcessing() {
+                if (!safeBitmap.isRecycled) {
+                    safeBitmap.recycle()
+                }
+                isProcessing.set(false)
+            }
 
             // 1. Run Object Detector
             objectDetector.process(inputImage)
@@ -123,18 +138,21 @@ class MlKitVisionHelper {
                             // Keep sorted by confidence descending
                             results.sortByDescending { it.confidence }
                             _detectedObjects.value = results.take(10)
-                            isProcessing.set(false)
+                            finishProcessing()
                         }
                         .addOnFailureListener {
                             _detectedObjects.value = results.take(10)
-                            isProcessing.set(false)
+                            finishProcessing()
                         }
                 }
                 .addOnFailureListener {
-                    isProcessing.set(false)
+                    finishProcessing()
                 }
         } catch (e: Exception) {
             e.printStackTrace()
+            if (safeBitmap != null && !safeBitmap.isRecycled) {
+                safeBitmap.recycle()
+            }
             isProcessing.set(false)
         }
     }

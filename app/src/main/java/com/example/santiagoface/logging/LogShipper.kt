@@ -43,13 +43,16 @@ object LogShipper {
         val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             try {
-                sendSync(
-                    level = "error",
-                    tag = "UncaughtException",
-                    message = "Uncaught exception on thread '${thread.name}': ${throwable.message}",
-                    throwable = throwable,
-                    details = mapOf("thread" to thread.name, "fatal" to true)
-                )
+                // Ship on the background executor to avoid NetworkOnMainThreadException when crashing on main thread
+                executor.submit {
+                    sendSync(
+                        level = "error",
+                        tag = "UncaughtException",
+                        message = "Uncaught exception on thread '${thread.name}': ${throwable.message}",
+                        throwable = throwable,
+                        details = mapOf("thread" to thread.name, "fatal" to true)
+                    )
+                }.get(2500, TimeUnit.MILLISECONDS)
             } catch (_: Exception) {
             } finally {
                 previousHandler?.uncaughtException(thread, throwable)
