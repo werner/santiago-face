@@ -47,7 +47,7 @@ class FaceHttpServer(
     private val currentEmotionProvider: () -> String,
     private val onRemoteAgentResponse: (emotion: String?, text: String?) -> Unit,
     private val onWebRtcOffer: (suspend (offerSdp: String) -> String?)? = null,
-    private val onWebRtcStop: (() -> Unit)? = null
+    private val onWebRtcStop: (suspend () -> Unit)? = null
 ) {
     private val gson = Gson()
     private var serverSocket: ServerSocket? = null

@@ -51,6 +51,7 @@ class WebRtcStreamer(context: Context) {
     private var isDisposed: Boolean = false
 
     private val offerMutex = Mutex()
+    private val disposeLock = Any()
 
     init {
         PeerConnectionFactory.initialize(
@@ -71,6 +72,10 @@ class WebRtcStreamer(context: Context) {
         videoTrack.setEnabled(true)
     }
 
+    suspend fun stop() = offerMutex.withLock {
+        closePeerConnection()
+    }
+
     suspend fun handleOffer(offerSdp: String): String? = offerMutex.withLock {
         if (isDisposed) return@withLock null
         closePeerConnection()
@@ -81,81 +86,103 @@ class WebRtcStreamer(context: Context) {
             continualGatheringPolicy = PeerConnection.ContinualGatheringPolicy.GATHER_ONCE
         }
 
-        val pc = factory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
-            override fun onSignalingChange(state: PeerConnection.SignalingState?) {}
-            override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {
-                Log.i(TAG, "ICE connection state: $state")
-                isConnected = state == PeerConnection.IceConnectionState.CONNECTED ||
-                    state == PeerConnection.IceConnectionState.COMPLETED
-                if (state == PeerConnection.IceConnectionState.FAILED ||
-                    state == PeerConnection.IceConnectionState.CLOSED
-                ) {
-                    isConnected = false
+        val pc = synchronized(disposeLock) {
+            if (isDisposed) return@withLock null
+            factory.createPeerConnection(rtcConfig, object : PeerConnection.Observer {
+                override fun onSignalingChange(state: PeerConnection.SignalingState?) {}
+                override fun onIceConnectionChange(state: PeerConnection.IceConnectionState?) {
+                    Log.i(TAG, "ICE connection state: $state")
+                    isConnected = state == PeerConnection.IceConnectionState.CONNECTED ||
+                        state == PeerConnection.IceConnectionState.COMPLETED
+                    if (state == PeerConnection.IceConnectionState.FAILED ||
+                        state == PeerConnection.IceConnectionState.CLOSED
+                    ) {
+                        isConnected = false
+                    }
                 }
+                override fun onIceConnectionReceivingChange(receiving: Boolean) {}
+                override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) {
+                    if (state == PeerConnection.IceGatheringState.COMPLETE) {
+                        iceGatheringComplete.complete(Unit)
+                    }
+                }
+                override fun onIceCandidate(candidate: IceCandidate?) {}
+                override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}
+                override fun onAddStream(stream: MediaStream?) {}
+                override fun onRemoveStream(stream: MediaStream?) {}
+                override fun onDataChannel(channel: DataChannel?) {}
+                override fun onRenegotiationNeeded() {}
+                override fun onAddTrack(receiver: RtpReceiver?, streams: Array<out MediaStream>?) {}
+            })?.also {
+                peerConnection = it
+                it.addTrack(videoTrack, listOf("santiago_stream"))
             }
-            override fun onIceConnectionReceivingChange(receiving: Boolean) {}
-            override fun onIceGatheringChange(state: PeerConnection.IceGatheringState?) {
-                if (state == PeerConnection.IceGatheringState.COMPLETE) {
-                    iceGatheringComplete.complete(Unit)
-                }
+        } ?: return@withLock null
+
+        var succeeded = false
+        try {
+            val setRemoteDone = CompletableDeferred<Boolean>()
+            pc.setRemoteDescription(
+                SimpleSdpObserver(
+                    onSetSuccess = { setRemoteDone.complete(true) },
+                    onSetFailure = { err ->
+                        LogShipper.e(TAG, "setRemoteDescription failed: $err", details = mapOf("stage" to "setRemoteDescription"))
+                        setRemoteDone.complete(false)
+                    }
+                ),
+                SessionDescription(SessionDescription.Type.OFFER, offerSdp)
+            )
+            if (withTimeoutOrNull(SDP_TIMEOUT_MS) { setRemoteDone.await() } != true || isDisposed) {
+                return@withLock null
             }
-            override fun onIceCandidate(candidate: IceCandidate?) {}
-            override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>?) {}
-            override fun onAddStream(stream: MediaStream?) {}
-            override fun onRemoveStream(stream: MediaStream?) {}
-            override fun onDataChannel(channel: DataChannel?) {}
-            override fun onRenegotiationNeeded() {}
-            override fun onAddTrack(receiver: RtpReceiver?, streams: Array<out MediaStream>?) {}
-        }) ?: return@withLock null
 
-        peerConnection = pc
-        pc.addTrack(videoTrack, listOf("santiago_stream"))
+            val answerCreated = CompletableDeferred<SessionDescription?>()
+            pc.createAnswer(
+                SimpleSdpObserver(
+                    onCreateSuccess = { sdp -> answerCreated.complete(sdp) },
+                    onCreateFailure = { err ->
+                        LogShipper.e(TAG, "createAnswer failed: $err", details = mapOf("stage" to "createAnswer"))
+                        answerCreated.complete(null)
+                    }
+                ),
+                MediaConstraints()
+            )
+            val answer = withTimeoutOrNull(SDP_TIMEOUT_MS) { answerCreated.await() }
+            if (answer == null || isDisposed) {
+                return@withLock null
+            }
 
-        val setRemoteDone = CompletableDeferred<Boolean>()
-        pc.setRemoteDescription(
-            SimpleSdpObserver(
-                onSetSuccess = { setRemoteDone.complete(true) },
-                onSetFailure = { err ->
-                    LogShipper.e(TAG, "setRemoteDescription failed: $err", details = mapOf("stage" to "setRemoteDescription"))
-                    setRemoteDone.complete(false)
-                }
-            ),
-            SessionDescription(SessionDescription.Type.OFFER, offerSdp)
-        )
-        if (!setRemoteDone.await()) return@withLock null
+            val setLocalDone = CompletableDeferred<Boolean>()
+            pc.setLocalDescription(
+                SimpleSdpObserver(
+                    onSetSuccess = { setLocalDone.complete(true) },
+                    onSetFailure = { err ->
+                        LogShipper.e(TAG, "setLocalDescription failed: $err", details = mapOf("stage" to "setLocalDescription"))
+                        setLocalDone.complete(false)
+                    }
+                ),
+                answer
+            )
+            if (withTimeoutOrNull(SDP_TIMEOUT_MS) { setLocalDone.await() } != true || isDisposed) {
+                return@withLock null
+            }
 
-        val answerCreated = CompletableDeferred<SessionDescription?>()
-        pc.createAnswer(
-            SimpleSdpObserver(
-                onCreateSuccess = { sdp -> answerCreated.complete(sdp) },
-                onCreateFailure = { err ->
-                    LogShipper.e(TAG, "createAnswer failed: $err", details = mapOf("stage" to "createAnswer"))
-                    answerCreated.complete(null)
-                }
-            ),
-            MediaConstraints()
-        )
-        val answer = answerCreated.await() ?: return@withLock null
+            // Wait up to 1.5s for host ICE candidates to be gathered into localDescription
+            withTimeoutOrNull(1500) {
+                iceGatheringComplete.await()
+            }
+            if (isDisposed) return@withLock null
 
-        val setLocalDone = CompletableDeferred<Boolean>()
-        pc.setLocalDescription(
-            SimpleSdpObserver(
-                onSetSuccess = { setLocalDone.complete(true) },
-                onSetFailure = { err ->
-                    LogShipper.e(TAG, "setLocalDescription failed: $err", details = mapOf("stage" to "setLocalDescription"))
-                    setLocalDone.complete(false)
-                }
-            ),
-            answer
-        )
-        if (!setLocalDone.await()) return@withLock null
-
-        // Wait up to 1.5s for host ICE candidates to be gathered into localDescription
-        withTimeoutOrNull(1500) {
-            iceGatheringComplete.await()
+            val sdp = synchronized(disposeLock) {
+                if (isDisposed) null else pc.localDescription?.description
+            }
+            succeeded = sdp != null
+            sdp
+        } finally {
+            if (!succeeded) {
+                closePeerConnection()
+            }
         }
-
-        pc.localDescription?.description
     }
 
     fun pushBitmapFrame(bitmap: Bitmap) {
@@ -176,8 +203,15 @@ class WebRtcStreamer(context: Context) {
             val i420 = bitmapToI420(scaled)
             val timestampNs = TimeUnit.MILLISECONDS.toNanos(now)
             val frame = VideoFrame(i420, 0, timestampNs)
-            videoSource.capturerObserver.onFrameCaptured(frame)
-            frame.release()
+            try {
+                synchronized(disposeLock) {
+                    if (!isDisposed && peerConnection != null) {
+                        videoSource.capturerObserver.onFrameCaptured(frame)
+                    }
+                }
+            } finally {
+                frame.release()
+            }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to push WebRTC frame: ${e.message}")
         } finally {
@@ -187,23 +221,30 @@ class WebRtcStreamer(context: Context) {
         }
     }
 
-    fun closePeerConnection() {
+    private fun closePeerConnection() {
         isConnected = false
+        val pc = synchronized(disposeLock) {
+            peerConnection.also { peerConnection = null }
+        }
         try {
-            peerConnection?.close()
-            peerConnection?.dispose()
+            pc?.close()
+            pc?.dispose()
         } catch (_: Exception) {
         }
-        peerConnection = null
     }
 
     fun dispose() {
-        isDisposed = true
+        synchronized(disposeLock) {
+            if (isDisposed) return
+            isDisposed = true
+        }
         closePeerConnection()
-        runCatching { videoTrack.dispose() }
-        runCatching { videoSource.dispose() }
-        runCatching { factory.dispose() }
-        runCatching { eglBase.release() }
+        synchronized(disposeLock) {
+            runCatching { videoTrack.dispose() }
+            runCatching { videoSource.dispose() }
+            runCatching { factory.dispose() }
+            runCatching { eglBase.release() }
+        }
     }
 
     private fun bitmapToI420(bitmap: Bitmap): JavaI420Buffer {
@@ -269,5 +310,6 @@ class WebRtcStreamer(context: Context) {
 
     companion object {
         private const val TAG = "WebRtcStreamer"
+        private const val SDP_TIMEOUT_MS = 5000L
     }
 }
