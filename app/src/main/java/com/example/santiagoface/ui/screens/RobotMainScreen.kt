@@ -65,6 +65,7 @@ import com.example.santiagoface.navigation.SearchState
 import com.example.santiagoface.ui.face.RobotFaceCanvas
 import com.example.santiagoface.ui.viewmodel.RobotViewModel
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
 
 @Composable
 fun RobotMainScreen(viewModel: RobotViewModel) {
@@ -99,6 +100,28 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
 
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
+    fun fetchAndSendLocation() {
+        val hasFine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasCoarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (!hasFine && !hasCoarse) return
+        try {
+            fusedLocationClient.lastLocation.addOnSuccessListener { location: android.location.Location? ->
+                if (location != null) {
+                    viewModel.updateLocation(location.latitude, location.longitude)
+                } else {
+                    val priority = if (hasFine) Priority.PRIORITY_HIGH_ACCURACY else Priority.PRIORITY_BALANCED_POWER_ACCURACY
+                    fusedLocationClient.getCurrentLocation(priority, null)
+                        .addOnSuccessListener { currentLoc: android.location.Location? ->
+                            currentLoc?.let {
+                                viewModel.updateLocation(it.latitude, it.longitude)
+                            }
+                        }
+                }
+            }
+        } catch (_: SecurityException) {
+        }
+    }
+
     // Permission launcher for microphone, camera, and location
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
@@ -107,18 +130,13 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         val isCameraGranted = permissions[Manifest.permission.CAMERA] == true ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-        val isLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true || permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true
+        val isLocationGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true ||
+            permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
         if (isLocationGranted) {
-            try {
-                fusedLocationClient.lastLocation.addOnSuccessListener { location: android.location.Location? ->
-                    location?.let {
-                        viewModel.updateLocation(it.latitude, it.longitude)
-                    }
-                }
-            } catch (e: SecurityException) {
-                // Ignore
-            }
+            fetchAndSendLocation()
         }
 
         if (isAudioGranted) {
@@ -132,27 +150,30 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
 
     fun handleEnableMicClick() {
         val hasAudio = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-        val hasLoc = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasLoc = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
         if (hasLoc) {
-            try {
-                fusedLocationClient.lastLocation.addOnSuccessListener { location: android.location.Location? ->
-                    location?.let {
-                        viewModel.updateLocation(it.latitude, it.longitude)
-                    }
-                }
-            } catch (e: SecurityException) {}
+            fetchAndSendLocation()
         }
 
-        if (hasAudio) {
+        if (hasAudio && hasLoc) {
             viewModel.enableMicrophone()
         } else {
-            val permissionsToRequest = mutableListOf(Manifest.permission.RECORD_AUDIO)
+            if (hasAudio) {
+                viewModel.enableMicrophone()
+            }
+            val permissionsToRequest = mutableListOf<String>()
+            if (!hasAudio) {
+                permissionsToRequest.add(Manifest.permission.RECORD_AUDIO)
+            }
             if (!hasLoc) {
                 permissionsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
                 permissionsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
             }
-            permissionLauncher.launch(permissionsToRequest.toTypedArray())
+            if (permissionsToRequest.isNotEmpty()) {
+                permissionLauncher.launch(permissionsToRequest.toTypedArray())
+            }
         }
     }
 
@@ -162,30 +183,35 @@ fun RobotMainScreen(viewModel: RobotViewModel) {
 
     fun handleToggleCameraClick() {
         val hasCamera = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        val hasLoc = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (hasLoc) {
+            fetchAndSendLocation()
+        }
         if (hasCamera) {
             viewModel.toggleCamera(lifecycleOwner)
         } else {
-            permissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.CAMERA,
-                    Manifest.permission.RECORD_AUDIO
-                )
-            )
+            val perms = mutableListOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO)
+            if (!hasLoc) {
+                perms.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+                perms.add(Manifest.permission.ACCESS_FINE_LOCATION)
+            }
+            permissionLauncher.launch(perms.toTypedArray())
         }
     }
 
     LaunchedEffect(Unit) {
-        val hasLoc = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val hasLoc = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
         if (hasLoc) {
-            try {
-                fusedLocationClient.lastLocation.addOnSuccessListener { location: android.location.Location? ->
-                    location?.let {
-                        viewModel.updateLocation(it.latitude, it.longitude)
-                    }
-                }
-            } catch (e: SecurityException) {
-                // Ignore
-            }
+            fetchAndSendLocation()
+        } else {
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                )
+            )
         }
     }
 

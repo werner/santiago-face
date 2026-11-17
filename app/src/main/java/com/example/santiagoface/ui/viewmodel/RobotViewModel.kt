@@ -428,6 +428,8 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
                 visualContext = visualContextPayload,
                 detectedObjects = detectedObjectsPayload,
                 mlKitDetections = mlKitDetectionsPayload,
+                latitude = _currentLatitude.value,
+                longitude = _currentLongitude.value,
                 onSpeculative = { spec ->
                     val parsedEmotion = RobotEmotion.fromString(spec.emotion)
                     _emotion.value = parsedEmotion

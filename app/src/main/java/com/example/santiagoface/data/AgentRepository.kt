@@ -55,7 +55,9 @@ data class AgentRequest(
     @SerializedName("detected_objects")
     val detectedObjects: List<String>? = null,
     @SerializedName("mlkit_detections")
-    val mlKitDetections: List<MlKitDetectionDto>? = null
+    val mlKitDetections: List<MlKitDetectionDto>? = null,
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )
 
 data class BoundingBoxDto(
@@ -316,7 +318,9 @@ class AgentRepository(
         autoAct: Boolean? = null,
         visualContext: String? = null,
         detectedObjects: List<String>? = null,
-        mlKitDetections: List<MlKitDetectionDto>? = null
+        mlKitDetections: List<MlKitDetectionDto>? = null,
+        latitude: Double? = null,
+        longitude: Double? = null
     ): Result<AgentResponse> = withContext(Dispatchers.IO) {
         runCatching {
             val cleanUrl = cleanBaseUrl(baseUrl)
@@ -338,7 +342,9 @@ class AgentRepository(
                     autoAct = autoAct,
                     visualContext = visualContext,
                     detectedObjects = detectedObjects,
-                    mlKitDetections = mlKitDetections
+                    mlKitDetections = mlKitDetections,
+                    latitude = latitude,
+                    longitude = longitude
                 )
             )
             val request = Request.Builder()
@@ -383,6 +389,8 @@ class AgentRepository(
         visualContext: String? = null,
         detectedObjects: List<String>? = null,
         mlKitDetections: List<MlKitDetectionDto>? = null,
+        latitude: Double? = null,
+        longitude: Double? = null,
         onSpeculative: ((SpeculativeEventDto) -> Unit)? = null
     ): Result<AgentResponse> = withContext(Dispatchers.IO) {
         runCatching {
@@ -405,7 +413,9 @@ class AgentRepository(
                     autoAct = autoAct,
                     visualContext = visualContext,
                     detectedObjects = detectedObjects,
-                    mlKitDetections = mlKitDetections
+                    mlKitDetections = mlKitDetections,
+                    latitude = latitude,
+                    longitude = longitude
                 )
             )
             val request = Request.Builder()
