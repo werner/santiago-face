@@ -24,3 +24,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "SantiagoFace"
 include(":app")
+include(":santiago-agent")
+project(":santiago-agent").projectDir = file("/home/werner/projects/santiago_agent/android")
