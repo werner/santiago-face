@@ -6,6 +6,8 @@ import androidx.camera.core.Preview
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.viewModelScope
+import com.example.santiagoagent.SantiagoAgent
+import com.example.santiagoagent.SantiagoAgentConfig
 import com.example.santiagoface.camera.CameraHelper
 import com.example.santiagoface.camera.DetectedObject
 import com.example.santiagoface.camera.VisionDecisionHelper
@@ -186,8 +188,27 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
         }
         // Configure initial Spanish locale tag for speech recognizer
         speechRecognizer.updateSpanishLocale(_spanishLocale.value)
+        // Start embedded SantiagoAgent Rust library if no external remote URL is configured,
+        // or always keep it ready on 0.0.0.0:3000
+        val startedLocalAgent = runCatching {
+            SantiagoAgent.start(
+                context = application,
+                config = SantiagoAgentConfig(
+                    host = "0.0.0.0",
+                    port = 3000,
+                    apiKey = apiKey.ifBlank { "santiago-secret-key-1234" },
+                    esp32BaseUrl = _esp32BaseUrl.value,
+                    esp32ApiKey = com.example.santiagoface.BuildConfig.ESP32_API_KEY,
+                    grafanaLogsUrl = com.example.santiagoface.BuildConfig.GRAFANA_LOGS_URL,
+                    logsIngestUrl = com.example.santiagoface.BuildConfig.LOGS_INGEST_URL
+                )
+            )
+        }.getOrDefault(false)
+        if (startedLocalAgent && (savedUrl.isNullOrBlank() || savedUrl.contains("127.0.0.1") || savedUrl.contains("10.0.2.2") || savedUrl.contains("localhost"))) {
+            _agentBaseUrl.value = SantiagoAgent.baseUrl()
+        }
         // Persist the clean initial URL
-        prefs.edit().putString("agent_url", initialUrl).apply()
+        prefs.edit().putString("agent_url", _agentBaseUrl.value).apply()
         // Start embedded HTTP/MJPEG server + mDNS advertisement for SantiagoRemote
         faceHttpServer.start(viewModelScope)
         faceNsdAdvertiser.register(port = 8080)
@@ -659,6 +680,7 @@ class RobotViewModel(application: Application) : AndroidViewModel(application) {
         cameraHelper.onFrameListener = null
         faceNsdAdvertiser.unregister()
         faceHttpServer.stop()
+        SantiagoAgent.stop()
         webRtcStreamer.dispose()
         stopCamera()
         speechRecognizer.destroy()
